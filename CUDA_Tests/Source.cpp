@@ -8,6 +8,10 @@ using std::vector;
 
 int main()
 {
+	typedef float* agentTarget;
+	typedef agentTarget* agentTargetReference;
+	typedef agentTargetReference* agentTargetReferenceMatrix;
+	
 	cublasHandle_t cublasHandle;
 	cublasCreate(&cublasHandle);
 
@@ -15,44 +19,45 @@ int main()
 	curandCreateGenerator(&curandHandle, CURAND_RNG_PSEUDO_DEFAULT);
 	curandSetPseudoRandomGeneratorSeed(curandHandle, 1234ULL);
 
-	const uint32_t N = 10;
-	float* winGPU, * loseGPU;
-	cudaMalloc(&winGPU, N * sizeof(float));
-	cudaMalloc(&loseGPU, N * sizeof(float));
-	
-	curandGenerateUniform(curandHandle, winGPU, N);
-	curandGenerateUniform(curandHandle, loseGPU, N);
+	const uint32_t TARGET_DIM = 10;
+	agentTarget winGPU;
+	agentTarget loseGPU;
+	cudaMalloc(&winGPU, TARGET_DIM * sizeof(float));
+	cudaMalloc(&loseGPU, TARGET_DIM * sizeof(float));
+
+	curandGenerateUniform(curandHandle, winGPU, TARGET_DIM);
+	curandGenerateUniform(curandHandle, loseGPU, TARGET_DIM);
 
 	const uint32_t AGENTS = 10;
 
-	vector<float**> agents;
+	vector<agentTargetReference> agentTargetIDs;
 	for (uint32_t i = 0; i < AGENTS; i++)
 	{
-		float** agent = new float*;
-		agents.push_back(agent);
+		agentTargetReference agentID = new agentTarget;
+		agentTargetIDs.push_back(agentID);
 	}
-	
-	vector<float***> history;
-	float*** historyarr = new float** [AGENTS];
+
+	vector<agentTargetReferenceMatrix> history;
+	agentTargetReferenceMatrix historyArr = new agentTargetReference[AGENTS];
 	for (uint32_t i = 0; i < AGENTS; i++)
 	{
-		historyarr[i] = agents[i];
+		historyArr[i] = agentTargetIDs[i];
 	}
-	history.push_back(historyarr);
+	history.push_back(historyArr);
 
 	for (uint32_t i = 0; i < AGENTS; i++)
 	{
-		*agents[i] = i & 2 ? winGPU : loseGPU;
+		*agentTargetIDs[i] = i & 2 ? winGPU : loseGPU;
 	}
 
 	// print
-	float* state = new float[N];
+	agentTarget state = new float[TARGET_DIM];
 	for (uint32_t i = 0; i < history.size(); i++)
 	{
 		for (uint32_t j = 0; j < AGENTS; j++)
 		{
-			cudaMemcpy(state, *history[i][j], N * sizeof(float), cudaMemcpyDeviceToHost);
-			for (uint32_t k = 0; k < N; k++)
+			cudaMemcpy(state, *history[i][j], TARGET_DIM * sizeof(float), cudaMemcpyDeviceToHost);
+			for (uint32_t k = 0; k < TARGET_DIM; k++)
 			{
 				cout << state[k] << " ";
 			}
