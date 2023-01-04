@@ -2,9 +2,24 @@
 //#include <curand.h>
 #include <iostream>
 #include <vector>
+#include <chrono>
 
 using std::cout;
 using std::vector;
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::nanoseconds;
+
+uint32_t seed = duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count();
+
+uint32_t random()
+{
+	// xorshift32
+	seed ^= seed << 13;
+	seed ^= seed >> 17;
+	seed ^= seed << 5;
+	return seed;
+}
 
 int main()
 {
@@ -22,8 +37,8 @@ int main()
 
 		agentAttributes()
 		{
-			x = rand() % BOARD_SIZE;
-			y = rand() % BOARD_SIZE;
+			x = random() % BOARD_SIZE;
+			y = random() % BOARD_SIZE;
 			isAlive = true;
 		}
 	};
@@ -44,48 +59,87 @@ int main()
 			memset(states, 0, sizeof(float) * STATE_DIM * agentsPresent);
 		}
 
-		~Moment()
+		/*~Moment()
 		{
 			delete[] states;
 			delete[] actions;
 			delete[] agentReferences;
-		}
+		}*/
 	};
 
 	vector<agentAttributes> agents;
 	vector<Moment> history;
 
-	const uint32_t AGENTS = 2;
+	history.push_back(Moment(1));
+
+	/*const uint32_t AGENTS = 2;
 
 	for (uint32_t i = AGENTS; i--;)
 		agents.push_back(agentAttributes());
 	
 	uint32_t numAlive = AGENTS;
+	int iter = 0;
 	do
 	{
+		cout << "Iteration " << iter << ":\n";
 		Moment moment(numAlive);
 		for (uint32_t i = AGENTS; i--;)
 			if (agents[i].isAlive)
 				moment.agentReferences[i] = &agents[i];
 		
-		agentAttributes** agent = moment.agentReferences;
+		agentAttributes** agentReferences = moment.agentReferences;
 		float* state = moment.states;
-		for (uint32_t i = moment.numAgents; i--; agent++, state += STATE_DIM)
-		{
-			state[(*agent)->x + (*agent)->y * BOARD_SIZE] = 1;
-		}
+		for (uint32_t i = moment.numAgents; i--; agentReferences++, state += STATE_DIM)
+			state[(*agentReferences)->x + (*agentReferences)->y * BOARD_SIZE] = 1;
 
-		// mat mul placeholder
-		for (uint32_t i = moment.numAgents; i--;)
+		agentReferences = moment.agentReferences;
+		for (uint32_t i = moment.numAgents; i--; agentReferences++)
 		{
-			agent[i]->x += rand() % 3 - 1;
-			agent[i]->y += rand() % 3 - 1;
-			if (agent[i]->x >= BOARD_SIZE || agent[i]->y >= BOARD_SIZE)
-				agent[i]->isAlive = false;
+			uint32_t move = random() % 4;
+			switch (move)
+			{
+			case 0:
+				if ((*agentReferences)->x > 0)
+					(*agentReferences)->x--;
+				else
+				{
+					(*agentReferences)->isAlive = false;
+					numAlive--;
+				}
+				break;
+			case 1:
+				if ((*agentReferences)->x < BOARD_SIZE - 1)
+					(*agentReferences)->x++;
+				else
+				{
+					(*agentReferences)->isAlive = false;
+					numAlive--;
+				}
+				break;
+			case 2:
+				if ((*agentReferences)->y > 0)
+					(*agentReferences)->y--;
+				else
+				{
+					(*agentReferences)->isAlive = false;
+					numAlive--;
+				}
+				break;
+			case 3:
+				if ((*agentReferences)->y < BOARD_SIZE - 1)
+					(*agentReferences)->y++;
+				else
+				{
+					(*agentReferences)->isAlive = false;
+					numAlive--;
+				}
+				break;
+			}
 		}
-
 		history.push_back(moment);
-	} while (numAlive);
+	} while (iter--);*/
+
+	cout << "History size: " << history.size() << "\n";
 
 	return 0;
 }
