@@ -32,7 +32,7 @@ struct xorwow32
 
 	float operator()(float min, float max)
 	{
-		return min + (max - min) * operator()() * 2.3283064365e-10;
+		return min + (max - min) * operator()() * 2.3283064371e-10;	// 0 & 1 inclusive, 2.3283064365e-10 for exclusive 1
 	}
 };
 
