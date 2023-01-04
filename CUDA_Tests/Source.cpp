@@ -29,13 +29,21 @@ struct xorwow32
 		state[4] ^= (state[4] << 4) ^ (t ^ (t << 1));
 		return (state[5] += 362437) + state[4];
 	}
+
+	float operator()(float min, float max)
+	{
+		return min + (max - min) * operator()() * 2.3283064365e-10;
+	}
 };
 
 int main()
 {
-	xorwow32 rand(0);
+	xorwow32 rand(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
 	for (int i = 0; i < 10; i++)
-		cout << rand() << "\n";
+	{
+		//cout << rand() << "\n";
+		cout << rand(-1.0f, 1.0f) << "\n";
+	}
 
 	return 0;
 }
