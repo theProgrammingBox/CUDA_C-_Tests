@@ -23,123 +23,70 @@ uint32_t random()
 
 int main()
 {
-	const uint32_t BOARD_SIZE = 3;
-	const uint32_t STATE_DIM = BOARD_SIZE * BOARD_SIZE;
-	const uint32_t ACTION_DIM = 4;
+	/*float* arr;
+	arr = new float[100];
+	arr[10] = 2435;
+	float* placeHolder = arr;
+	cout << placeHolder[10] << "\n";
+	delete[] arr;
+	cout << placeHolder[10] << "\n";*/
+
 	
-	class agentAttributes
+	class Balls
 	{
 	public:
-		uint32_t x;
-		uint32_t y;
-		float endState;
-		bool isAlive;
-
-		agentAttributes()
+		struct ball
 		{
-			x = random() % BOARD_SIZE;
-			y = random() % BOARD_SIZE;
-			isAlive = true;
-		}
-	};
+			float* arr;
 
-	struct Moment
-	{
-		uint32_t numAgents;
-		float* states;
-		float* actions;
-		agentAttributes** agentReferences;
-
-		Moment(uint32_t agentsPresent)
-		{
-			numAgents = agentsPresent;
-			states = new float[STATE_DIM * agentsPresent];
-			actions = new float[ACTION_DIM * agentsPresent];
-			agentReferences = new agentAttributes* [agentsPresent];
-			memset(states, 0, sizeof(float) * STATE_DIM * agentsPresent);
-		}
-
-		/*~Moment()
-		{
-			delete[] states;
-			delete[] actions;
-			delete[] agentReferences;
-		}*/
-	};
-
-	vector<agentAttributes> agents;
-	vector<Moment> history;
-
-	history.push_back(Moment(1));
-
-	/*const uint32_t AGENTS = 2;
-
-	for (uint32_t i = AGENTS; i--;)
-		agents.push_back(agentAttributes());
-	
-	uint32_t numAlive = AGENTS;
-	int iter = 0;
-	do
-	{
-		cout << "Iteration " << iter << ":\n";
-		Moment moment(numAlive);
-		for (uint32_t i = AGENTS; i--;)
-			if (agents[i].isAlive)
-				moment.agentReferences[i] = &agents[i];
-		
-		agentAttributes** agentReferences = moment.agentReferences;
-		float* state = moment.states;
-		for (uint32_t i = moment.numAgents; i--; agentReferences++, state += STATE_DIM)
-			state[(*agentReferences)->x + (*agentReferences)->y * BOARD_SIZE] = 1;
-
-		agentReferences = moment.agentReferences;
-		for (uint32_t i = moment.numAgents; i--; agentReferences++)
-		{
-			uint32_t move = random() % 4;
-			switch (move)
+			ball()
 			{
-			case 0:
-				if ((*agentReferences)->x > 0)
-					(*agentReferences)->x--;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
-				break;
-			case 1:
-				if ((*agentReferences)->x < BOARD_SIZE - 1)
-					(*agentReferences)->x++;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
-				break;
-			case 2:
-				if ((*agentReferences)->y > 0)
-					(*agentReferences)->y--;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
-				break;
-			case 3:
-				if ((*agentReferences)->y < BOARD_SIZE - 1)
-					(*agentReferences)->y++;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
-				break;
+				arr = new float[100];
+				arr[10] = 2435;
+			}
+		};
+		
+		vector<ball> balls;
+		
+		Balls()
+		{
+		}
+
+		void addBall()
+		{
+			balls.push_back(ball());
+		}
+
+		void clear()
+		{
+			for (int i = 0; i < balls.size(); i++)
+			{
+				delete[] balls[i].arr;
+			}
+			balls.clear();
+		}
+
+		~Balls()
+		{
+			for (int i = 0; i < balls.size(); i++)
+			{
+				delete[] balls[i].arr;
 			}
 		}
-		history.push_back(moment);
-	} while (iter--);*/
+	};
 
-	cout << "History size: " << history.size() << "\n";
+	float* placeHolder;
+	while (true)
+	{
+		for (int i = 0; i == 0; i++)
+		{
+			Balls balls;
+			balls.addBall();
+			placeHolder = balls.balls[0].arr;
+			cout << placeHolder[10] << "\n";
+		}
+		cout << placeHolder[10] << "\n";
+	}
 
 	return 0;
 }
