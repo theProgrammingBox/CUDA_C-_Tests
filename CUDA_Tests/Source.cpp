@@ -62,9 +62,11 @@ public:
 			for (uint32_t i = AGENTS; i--; agent++)
 				if (agent->isAlive)
 				{
+					cout << "Agent " << i << " is alive\n";
 					*agentReferences = agent;
 					agentReferences++;
 				}
+			cout << "\n";
 
 			// update their boards
 			agentReferences = moment.agentReferences;
@@ -77,6 +79,7 @@ public:
 			action = moment.actions;
 			for (uint32_t i = moment.numAgents; i--; agentReferences++, action++)
 			{
+				(*agentReferences)->score++;
 				*action = random() & 3;
 				switch (*action)
 				{
@@ -98,7 +101,6 @@ public:
 					break;
 				}
 				numAlive -= !(*agentReferences)->isAlive;
-				(*agentReferences)->score += (*agentReferences)->isAlive;
 			}
 
 			// add the moment to the history
@@ -116,7 +118,10 @@ public:
 		//print agents
 		agent = agents.data();
 		for (uint32_t i = AGENTS; i--; agent++)
-			cout << "Agent " << i << " Score: " << agent->score << " End State: " << agent->endState << "\n";
+			cout << "Agent " << i 
+			<< " Score: " << agent->score 
+			<< " End State: " << agent->endState
+			<< " isAlive: " << agent->isAlive << "\n";
 		cout << "\n";
 
 		// print history
@@ -177,6 +182,7 @@ private:
 		float endState;
 		bool isAlive;
 		uint32_t score;
+		// add id to debug
 
 		agentAttributes()
 		{
