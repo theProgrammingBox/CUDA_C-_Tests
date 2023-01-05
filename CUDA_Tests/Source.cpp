@@ -71,9 +71,11 @@ public:
 
 			// make a random moves as a plave holder, use matmul later on
 			agentReferences = moment.agentReferences;
-			for (uint32_t i = moment.numAgents; i--; agentReferences++)
+			action = moment.actions;
+			for (uint32_t i = moment.numAgents; i--; agentReferences++, action++)
 			{
-				switch (random() & 3)
+				*action = random() & 3;
+				switch (*action)
 				{
 				case 0:
 					(*agentReferences)->isAlive = (*agentReferences)->x > 0;
@@ -105,8 +107,9 @@ public:
 		for (uint32_t i = history.numMoments(); i--; moments++)
 		{
 			state = moments->states;
+			action = moments->actions;
 			cout << "Moment " << i << "\n";
-			for (uint32_t j = moments->numAgents; j--; state += STATE_DIM)
+			for (uint32_t j = moments->numAgents; j--; state += STATE_DIM, action++)
 			{
 				cout << "Agent State:\n";
 				for (uint32_t k = 0; k < BOARD_SIZE; k++)
@@ -115,38 +118,48 @@ public:
 						cout << state[k + l * BOARD_SIZE] << " ";
 					cout << "\n";
 				}
-				cout << "\n";
+				cout << "Agent Next Action: ";
+				switch (*action)
+				{
+				case 0:
+					cout << "Left";
+					break;
+				case 1:
+					cout << "Right";
+					break;
+				case 2:
+					cout << "Up";
+					break;
+				case 3:
+					cout << "Down";
+					break;
+				}
+				cout << "\n\n";
 			}
 		}
 
-		// make the alive bit the most significant bit in the score
-		agent = agents.data();
-		for (uint32_t i = AGENTS; i--; agent++)
-			agent->score = (uint32_t(agent->isAlive) << 31) | agent->score;
-
 		// sort agents by score, then if they are alive
-		sort(agents.begin(), agents.end(), [](const agentAttributes& a, const agentAttributes& b)
-			{ 
-				return a.score > b.score; 
-			});
+		sort(agents.begin(), agents.end(), [](const agentAttributes& a, const agentAttributes& b) { return a.score > b.score; });
 
-		// reset the alive bit
+		// set the endstate based on TOP_AGENTS
 		agent = agents.data();
-		for (uint32_t i = AGENTS; i--; agent++)
-			agent->score = agent->score & 0x7FFFFFFF;
+		for (uint32_t i = TOP_AGENTS; i--; agent++)
+			agent->endState = 1;
 
 		//print agents
 		agent = agents.data();
 		for (uint32_t i = AGENTS; i--; agent++)
-			cout << "Agent " << i << " Score: " << agent->score << "\n";
+			cout << "Agent " << i << " Score: " << agent->score << " End State: " << agent->endState << "\n";
 	}
 
 private:
-	static const uint32_t BOARD_SIZE = 3;
-	static const uint32_t STATE_DIM = BOARD_SIZE * BOARD_SIZE;
-	static const uint32_t ACTION_DIM = 4;
-	static const uint32_t MAX_EPISODES = 4;
-	static const uint32_t AGENTS = 8;
+	static constexpr uint32_t BOARD_SIZE = 3;
+	static constexpr uint32_t STATE_DIM = BOARD_SIZE * BOARD_SIZE;
+	static constexpr uint32_t ACTION_DIM = 4;
+	static constexpr uint32_t MAX_EPISODES = 4;
+	static constexpr uint32_t AGENTS = 8;
+	static constexpr float TOP_PERCENT = 0.4f;
+	static constexpr uint32_t TOP_AGENTS = AGENTS * TOP_PERCENT;
 
 	struct agentAttributes
 	{
@@ -162,6 +175,7 @@ private:
 			x = random() % BOARD_SIZE;
 			y = random() % BOARD_SIZE;
 			isAlive = true;
+			endState = -1;
 			score = 0;
 		}
 	};
@@ -174,7 +188,8 @@ private:
 		{
 			uint32_t numAgents;
 			float* states;
-			float* actions;
+			uint8_t* actions;
+			float* error;
 			agentAttributes** agentReferences;
 			//float* statesGPU;
 
@@ -182,7 +197,8 @@ private:
 			{
 				numAgents = agentsPresent;
 				states = new float[STATE_DIM * agentsPresent];
-				actions = new float[ACTION_DIM * agentsPresent];
+				actions = new uint8_t[agentsPresent];
+				error = new float[ACTION_DIM * agentsPresent];
 				agentReferences = new agentAttributes * [agentsPresent];
 				memset(states, 0, sizeof(float) * STATE_DIM * agentsPresent);
 				//cudaMalloc(&statesGPU, sizeof(float) * STATE_DIM * agentsPresent);
@@ -193,6 +209,7 @@ private:
 				numAgents = other.numAgents;
 				states = other.states;
 				actions = other.actions;
+				error = other.error;
 				agentReferences = other.agentReferences;
 				//statesGPU = other.statesGPU;
 			}
@@ -206,6 +223,7 @@ private:
 			{
 				delete[] moment.states;
 				delete[] moment.actions;
+				delete[] moment.error;
 				delete[] moment.agentReferences;
 				//cudaFree(moment.statesGPU);
 			}
@@ -225,6 +243,7 @@ private:
 	//			TEMP VARS				//
 	agentAttributes** agentReferences;
 	float* state;
+	uint8_t* action;
 	History::Moment* moments;
 	agentAttributes* agent;
 	//////////////////////////////////////
