@@ -47,7 +47,10 @@ public:
 	{
 		// create agents
 		for (uint32_t i = AGENTS; i--;)
+		{
 			agents.push_back(agentAttributes());
+			agents.back().id = i;
+		}
 
 		// start a game
 		uint32_t numAlive = AGENTS;
@@ -62,7 +65,7 @@ public:
 			for (uint32_t i = AGENTS; i--; agent++)
 				if (agent->isAlive)
 				{
-					cout << "Agent " << i << " is alive\n";
+					cout << "Agent " << agent->id << " is alive\n";
 					*agentReferences = agent;
 					agentReferences++;
 				}
@@ -108,7 +111,7 @@ public:
 		} while (numAlive && --episode);
 
 		// sort agents by score, then if they are alive
-		sort(agents.begin(), agents.end(), [](const agentAttributes& a, const agentAttributes& b) { return a.score > b.score; });
+		//sort(agents.begin(), agents.end(), [](const agentAttributes& a, const agentAttributes& b) { return a.score > b.score; });
 
 		// set the endstate based on TOP_AGENTS
 		agent = agents.data();
@@ -118,8 +121,8 @@ public:
 		//print agents
 		agent = agents.data();
 		for (uint32_t i = AGENTS; i--; agent++)
-			cout << "Agent " << i 
-			<< " Score: " << agent->score 
+			cout << "Agent " << agent->id
+			<< " Score: " << agent->score
 			<< " End State: " << agent->endState
 			<< " isAlive: " << agent->isAlive << "\n";
 		cout << "\n";
@@ -131,10 +134,11 @@ public:
 			agentReferences = moments->agentReferences;
 			state = moments->states;
 			action = moments->actions;
-			cout << "Moment " << i << "\n";
+			cout << "--------------------Moment " << i << "\n";
 			for (uint32_t j = moments->numAgents; j--; agentReferences++, state += STATE_DIM, action++)
 			{
-				cout << "Agent State:\n";
+				cout << "Agent " << (*agentReferences)->id << "\n";
+				cout << "State:\n";
 				for (uint32_t k = 0; k < BOARD_SIZE; k++)
 				{
 					for (uint32_t l = 0; l < BOARD_SIZE; l++)
@@ -182,7 +186,7 @@ private:
 		float endState;
 		bool isAlive;
 		uint32_t score;
-		// add id to debug
+		uint32_t id;
 
 		agentAttributes()
 		{
@@ -226,6 +230,11 @@ private:
 				error = other.error;
 				agentReferences = other.agentReferences;
 				//statesGPU = other.statesGPU;
+				other.states = nullptr;
+				other.actions = nullptr;
+				other.error = nullptr;
+				other.agentReferences = nullptr;
+				//other.statesGPU = nullptr;
 			}
 		};
 
