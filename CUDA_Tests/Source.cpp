@@ -12,7 +12,8 @@ using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 using std::sort;
 
-struct xorwow32
+// make one global random
+static struct xorwow32
 {
 	uint32_t state[6];
 
@@ -32,13 +33,8 @@ struct xorwow32
 		return (state[5] += 362437) + state[4];
 	}
 
-	float operator()(float min, float max)
-	{
-		return min + (max - min) * operator()() * 2.3283064371e-10;	// 0 & 1 inclusive, 2.3283064365e-10 for exclusive 1
-	}
-};
-
-static xorwow32 random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
+	float operator()(float min, float max) { return operator()() * 2.3283064371e-10 * (max - min) + min; }	// 0 & 1 inclusive, 2.3283064365e-10 for exclusive 1
+} random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
 
 
 int main()
@@ -51,6 +47,8 @@ int main()
 
 	// the vector should be sorted
 	// the dereferenced references should not be sorted
+
+	xorwow32 random2(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
 	
 	vector<int*> arr;
 
@@ -60,7 +58,7 @@ int main()
 	int** tempArr2;
 	//		//		//
 
-	for (int i = 4; i--;) arr.push_back(new int((random() & 7) - 3));
+	for (counter = 4; counter--;) arr.push_back(new int((random() & 7) - 3));
 
 	int** arr2 = new int* [arr.size()];
 	
