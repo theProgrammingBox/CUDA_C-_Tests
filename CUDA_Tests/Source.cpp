@@ -102,42 +102,6 @@ public:
 			history.addMoment(std::move(moment));
 		} while (numAlive && --episode);
 
-		// print history
-		moments = history.history.data();
-		for (uint32_t i = history.numMoments(); i--; moments++)
-		{
-			state = moments->states;
-			action = moments->actions;
-			cout << "Moment " << i << "\n";
-			for (uint32_t j = moments->numAgents; j--; state += STATE_DIM, action++)
-			{
-				cout << "Agent State:\n";
-				for (uint32_t k = 0; k < BOARD_SIZE; k++)
-				{
-					for (uint32_t l = 0; l < BOARD_SIZE; l++)
-						cout << state[k + l * BOARD_SIZE] << " ";
-					cout << "\n";
-				}
-				cout << "Agent Next Action: ";
-				switch (*action)
-				{
-				case 0:
-					cout << "Left";
-					break;
-				case 1:
-					cout << "Right";
-					break;
-				case 2:
-					cout << "Up";
-					break;
-				case 3:
-					cout << "Down";
-					break;
-				}
-				cout << "\n\n";
-			}
-		}
-
 		// sort agents by score, then if they are alive
 		sort(agents.begin(), agents.end(), [](const agentAttributes& a, const agentAttributes& b) { return a.score > b.score; });
 
@@ -150,6 +114,46 @@ public:
 		agent = agents.data();
 		for (uint32_t i = AGENTS; i--; agent++)
 			cout << "Agent " << i << " Score: " << agent->score << " End State: " << agent->endState << "\n";
+		cout << "\n";
+
+		// print history
+		moments = history.history.data();
+		for (uint32_t i = history.numMoments(); i--; moments++)
+		{
+			agentReferences = moments->agentReferences;
+			state = moments->states;
+			action = moments->actions;
+			cout << "Moment " << i << "\n";
+			for (uint32_t j = moments->numAgents; j--; agentReferences++, state += STATE_DIM, action++)
+			{
+				cout << "Agent State:\n";
+				for (uint32_t k = 0; k < BOARD_SIZE; k++)
+				{
+					for (uint32_t l = 0; l < BOARD_SIZE; l++)
+						cout << state[k + l * BOARD_SIZE] << " ";
+					cout << "\n";
+				}
+				
+				cout << "Agent Next Action: ";
+				switch (*action)
+				{
+				case 0:
+					cout << "Left\n";
+					break;
+				case 1:
+					cout << "Right\n";
+					break;
+				case 2:
+					cout << "Up\n";
+					break;
+				case 3:
+					cout << "Down\n";
+					break;
+				}
+				cout << "End State: " << (*agentReferences)->endState << "\n";
+				cout << "Score: " << (*agentReferences)->score << "\n\n";
+			}
+		}
 	}
 
 private:
