@@ -12,25 +12,83 @@ using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 using std::sort;
 
+struct xorwow32
+{
+	uint32_t state[6];
+
+	xorwow32(uint32_t seed) : state{
+		seed ^ 123456789,
+		seed ^ 362436069,
+		seed ^ 521288629,
+		seed ^ 88675123,
+		seed ^ 5783321,
+		seed ^ 6615241 } {}
+
+	uint32_t operator()()
+	{
+		uint32_t t = state[0] ^ (state[0] >> 2);
+		memcpy(state, state + 1, 16);
+		state[4] ^= (state[4] << 4) ^ (t ^ (t << 1));
+		return (state[5] += 362437) + state[4];
+	}
+
+	float operator()(float min, float max)
+	{
+		return min + (max - min) * operator()() * 2.3283064371e-10;	// 0 & 1 inclusive, 2.3283064365e-10 for exclusive 1
+	}
+};
+
+static xorwow32 random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
+
+
 int main()
 {
-	vector<int> arr;
+	// initialize the vector with floats
+	// make an array holding the float's references
+	// sort the vector
+	// print the vector
+	// print the dereferenced references
 
-	arr.push_back(10);
-	arr.push_back(2);
+	// the vector should be sorted
+	// the dereferenced references should not be sorted
+	
+	vector<int*> arr;
 
-	int** arr2 = new int* [2];
+	int** tempArr;
+	int** tempArr2;
 
-	int* tempArr = arr.data();
-	*arr2 = &*tempArr;
-	*(arr2 + 1) = &*(tempArr + 1);
+	for (int i = 4; i--;)
+	{
+		int* a = new int((random() & 7) - 3);
+		arr.push_back(a);
+	}
 
-	cout << *arr2[0] << " " << *arr2[1] << "\n";
+	int** arr2 = new int* [arr.size()];
 
-	//sort the vector
-	sort(arr.begin(), arr.end());
+	tempArr = arr.data();
+	tempArr2 = arr2;
+	for (int i = arr.size(); i--; tempArr++, tempArr2++)
+		*tempArr2 = *tempArr;
+	
+	cout << "PreSort:\n";
+	tempArr = arr.data();
+	for (int i = arr.size(); i--; tempArr++)
+		cout << **tempArr << " ";
+	cout << "\n\n";
 
-	cout << *arr2[0] << " " << *arr2[1] << "\n";
+	sort(arr.begin(), arr.end(), [](int* a, int* b) { return *a < *b; });
+
+	cout << "PostSort:\n";
+	tempArr = arr.data();
+	for (int i = arr.size(); i--; tempArr++)
+		cout << **tempArr << " ";
+	cout << "\n\n";
+	
+	cout << "DeRef:\n";
+	tempArr2 = arr2;
+	for (int i = arr.size(); i--; tempArr2++)
+		cout << **tempArr2 << " ";
+	cout << "\n\n";
 
 	return 0;
 }
