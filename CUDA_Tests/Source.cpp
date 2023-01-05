@@ -61,7 +61,10 @@ public:
 			agent = agents.data();
 			for (uint32_t i = AGENTS; i--; agent++)
 				if (agent->isAlive)
-					*agentReferences++ = agent;
+				{
+					*agentReferences = agent;
+					agentReferences++;
+				}
 
 			// update their boards
 			agentReferences = moment.agentReferences;
@@ -151,6 +154,7 @@ public:
 					break;
 				}
 				cout << "End State: " << (*agentReferences)->endState << "\n";
+				cout << "isAlive: " << (*agentReferences)->isAlive << "\n";
 				cout << "Score: " << (*agentReferences)->score << "\n\n";
 			}
 		}
