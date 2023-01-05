@@ -36,16 +36,104 @@ struct xorwow32
 	}
 };
 
-xorwow32 random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
+static xorwow32 random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
 
-int main()
+class Environment
 {
-	const uint32_t BOARD_SIZE = 3;
-	const uint32_t STATE_DIM = BOARD_SIZE * BOARD_SIZE;
-	const uint32_t ACTION_DIM = 4;
-	const uint32_t MAX_EPISODES = 4;
+public:
+	void Run()
+	{
+		// create agents
+		for (uint32_t i = AGENTS; i--;)
+			agents.push_back(agentAttributes());
 
-	class agentAttributes
+		// start a game
+		uint32_t numAlive = AGENTS;
+		uint32_t episode = MAX_EPISODES;
+		do
+		{
+			// add the number of agents alive to the current moment
+			History::Moment moment(numAlive);
+
+			agentReferences = moment.agentReferences;
+			agent = agents.data();
+			for (uint32_t i = AGENTS; i--; agent++)
+				if (agent->isAlive)
+					*agentReferences++ = agent;
+
+			// update their boards
+			agentReferences = moment.agentReferences;
+			state = moment.states;
+			for (uint32_t i = moment.numAgents; i--; agentReferences++, state += STATE_DIM)
+				state[(*agentReferences)->x + (*agentReferences)->y * BOARD_SIZE] = 1;
+
+			// make a random moves as a plave holder, use matmul later on
+			agentReferences = moment.agentReferences;
+			for (uint32_t i = moment.numAgents; i--; agentReferences++)
+			{
+				switch (random() & 3)
+				{
+				case 0:
+					(*agentReferences)->isAlive = (*agentReferences)->x > 0;
+					(*agentReferences)->x -= (*agentReferences)->isAlive;
+					break;
+				case 1:
+					(*agentReferences)->isAlive = (*agentReferences)->x < BOARD_SIZE - 1;
+					(*agentReferences)->x += (*agentReferences)->isAlive;
+					break;
+				case 2:
+					(*agentReferences)->isAlive = (*agentReferences)->y > 0;
+					(*agentReferences)->y -= (*agentReferences)->isAlive;
+					break;
+				case 3:
+					(*agentReferences)->isAlive = (*agentReferences)->y < BOARD_SIZE - 1;
+					(*agentReferences)->y += (*agentReferences)->isAlive;
+					break;
+				}
+				numAlive -= !(*agentReferences)->isAlive;
+				(*agentReferences)->score += (*agentReferences)->isAlive;
+			}
+
+			// add the moment to the history
+			history.addMoment(std::move(moment));
+		} while (numAlive && --episode);
+
+		// print history
+		moments = history.history.data();
+		for (uint32_t i = history.numMoments(); i--; moments++)
+		{
+			state = moments->states;
+			cout << "Moment " << i << "\n";
+			for (uint32_t j = moments->numAgents; j--; state += STATE_DIM)
+			{
+				cout << "Agent State:\n";
+				for (uint32_t k = 0; k < BOARD_SIZE; k++)
+				{
+					for (uint32_t l = 0; l < BOARD_SIZE; l++)
+						cout << state[k + l * BOARD_SIZE] << " ";
+					cout << "\n";
+				}
+				cout << "\n";
+			}
+		}
+
+		//print agents
+		agent = agents.data();
+		for (uint32_t i = AGENTS; i--; agent++)
+			cout << "Agent " << i << " Score: " << agent->score << "\n";
+
+		// sort agents by score, then if they are alive
+		RadixSort32(agents.data(), AGENTS);
+	}
+
+private:
+	static const uint32_t BOARD_SIZE = 3;
+	static const uint32_t STATE_DIM = BOARD_SIZE * BOARD_SIZE;
+	static const uint32_t ACTION_DIM = 4;
+	static const uint32_t MAX_EPISODES = 4;
+	static const uint32_t AGENTS = 8;
+
+	struct agentAttributes
 	{
 	public:
 		uint32_t x;
@@ -62,9 +150,8 @@ int main()
 			score = 0;
 		}
 	};
-
-	vector<agentAttributes> agents;
-
+	
+	// a class to handle the deconstruction of the moments in history
 	class History
 	{
 	public:
@@ -120,93 +207,26 @@ int main()
 		}
 	};
 
-	History history;
-
-	const uint32_t AGENTS = 8;
-
-	for (uint32_t i = AGENTS; i--;)
-		agents.push_back(agentAttributes());
-
 	//			TEMP VARS				//
 	agentAttributes** agentReferences;
 	float* state;
 	History::Moment* moments;
 	agentAttributes* agent;
 	//////////////////////////////////////
-
-	uint32_t numAlive = AGENTS;
-	uint32_t episode = MAX_EPISODES;
-	do
+	
+	vector<agentAttributes> agents;
+	History history;
+	
+	void RadixSort32(agentAttributes* agents, uint32_t numAgents)
 	{
-		History::Moment moment(numAlive);
-		
-		agentReferences = moment.agentReferences;
-		agent = agents.data();
-		for (uint32_t i = AGENTS; i--; agent++)
-			if (agent->isAlive)
-				*agentReferences++ = agent;
 
-		agentReferences = moment.agentReferences;
-		state = moment.states;
-		for (uint32_t i = moment.numAgents; i--; agentReferences++, state += STATE_DIM)
-			state[(*agentReferences)->x + (*agentReferences)->y * BOARD_SIZE] = 1;
-
-		agentReferences = moment.agentReferences;
-		for (uint32_t i = moment.numAgents; i--; agentReferences++)
-		{
-			switch (random() & 3)
-			{
-			case 0:
-				(*agentReferences)->isAlive = (*agentReferences)->x > 0;
-				(*agentReferences)->x -= (*agentReferences)->isAlive;
-				break;
-			case 1:
-				(*agentReferences)->isAlive = (*agentReferences)->x < BOARD_SIZE - 1;
-				(*agentReferences)->x += (*agentReferences)->isAlive;
-				break;
-			case 2:
-				(*agentReferences)->isAlive = (*agentReferences)->y > 0;
-				(*agentReferences)->y -= (*agentReferences)->isAlive;
-				break;
-			case 3:
-				(*agentReferences)->isAlive = (*agentReferences)->y < BOARD_SIZE - 1;
-				(*agentReferences)->y += (*agentReferences)->isAlive;
-				break;
-			}
-			numAlive -= !(*agentReferences)->isAlive;
-			(*agentReferences)->score += (*agentReferences)->isAlive;
-		}
-		history.addMoment(std::move(moment));
-	} while (numAlive && --episode);
-
-	// print history
-	moments = history.history.data();
-	for (uint32_t i = history.numMoments(); i--; moments++)
-	{
-		state = moments->states;
-		cout << "Moment " << i << "\n";
-		for (uint32_t j = moments->numAgents; j--; state += STATE_DIM)
-		{
-			cout << "Agent State:\n";
-			for (uint32_t k = 0; k < BOARD_SIZE; k++)
-			{
-				for (uint32_t l = 0; l < BOARD_SIZE; l++)
-					cout << state[k + l * BOARD_SIZE] << " ";
-				cout << "\n";
-			}
-			cout << "\n";
-		}
 	}
+};
 
-	//print agents
-	agent = agents.data();
-	for (uint32_t i = AGENTS; i--; agent++)
-		cout << "Agent " << i << " Score: " << agent->score << "\n";
-
-	// sort agents by score, then if they are alive
+int main()
+{
+	Environment env;
+	env.Run();
 
 	return 0;
-}
-
-void RadixSort32(uint32_t arr[], uint32_t size) {
 }
