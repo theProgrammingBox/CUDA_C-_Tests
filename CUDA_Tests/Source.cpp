@@ -127,85 +127,71 @@ int main()
 	for (uint32_t i = AGENTS; i--;)
 		agents.push_back(agentAttributes());
 
+	//			TEMP VARS				//
+	agentAttributes** agentReferences;
+	float* state;
+	History::Moment* moments;
+	agentAttributes* agent;
+	//////////////////////////////////////
+
 	uint32_t numAlive = AGENTS;
 	uint32_t episode = MAX_EPISODES;
 	do
 	{
 		History::Moment moment(numAlive);
-		agentAttributes** agentReferences = moment.agentReferences;
-
-		for (uint32_t i = AGENTS; i--;)
-			if (agents[i].isAlive)
-				*agentReferences++ = &agents[i];
+		
+		agentReferences = moment.agentReferences;
+		agent = agents.data();
+		for (uint32_t i = AGENTS; i--; agent++)
+			if (agent->isAlive)
+				*agentReferences++ = agent;
 
 		agentReferences = moment.agentReferences;
-		float* state = moment.states;
+		state = moment.states;
 		for (uint32_t i = moment.numAgents; i--; agentReferences++, state += STATE_DIM)
 			state[(*agentReferences)->x + (*agentReferences)->y * BOARD_SIZE] = 1;
 
 		agentReferences = moment.agentReferences;
 		for (uint32_t i = moment.numAgents; i--; agentReferences++)
 		{
-			uint32_t move = random() % 4;
-			switch (move)
+			switch (random() & 3)
 			{
 			case 0:
-				if ((*agentReferences)->x > 0)
-					(*agentReferences)->x--;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
+				(*agentReferences)->isAlive = (*agentReferences)->x > 0;
+				(*agentReferences)->x -= (*agentReferences)->isAlive;
 				break;
 			case 1:
-				if ((*agentReferences)->x < BOARD_SIZE - 1)
-					(*agentReferences)->x++;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
+				(*agentReferences)->isAlive = (*agentReferences)->x < BOARD_SIZE - 1;
+				(*agentReferences)->x += (*agentReferences)->isAlive;
 				break;
 			case 2:
-				if ((*agentReferences)->y > 0)
-					(*agentReferences)->y--;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
+				(*agentReferences)->isAlive = (*agentReferences)->y > 0;
+				(*agentReferences)->y -= (*agentReferences)->isAlive;
 				break;
 			case 3:
-				if ((*agentReferences)->y < BOARD_SIZE - 1)
-					(*agentReferences)->y++;
-				else
-				{
-					(*agentReferences)->isAlive = false;
-					numAlive--;
-				}
+				(*agentReferences)->isAlive = (*agentReferences)->y < BOARD_SIZE - 1;
+				(*agentReferences)->y += (*agentReferences)->isAlive;
 				break;
 			}
+			numAlive -= !(*agentReferences)->isAlive;
 			(*agentReferences)->score += (*agentReferences)->isAlive;
 		}
-
 		history.addMoment(std::move(moment));
 	} while (numAlive && --episode);
 
 	// print history
-	for (uint32_t i = history.numMoments(); i--;)
+	moments = history.history.data();
+	for (uint32_t i = history.numMoments(); i--; moments++)
 	{
+		state = moments->states;
 		cout << "Moment " << i << "\n";
-		History::Moment& moment = history.history[i];
-		agentAttributes** agentReferences = moment.agentReferences;
-		float* state = moment.states;
-		for (uint32_t j = moment.numAgents; j--; agentReferences++, state += STATE_DIM)
+		for (uint32_t j = moments->numAgents; j--; state += STATE_DIM)
 		{
-			cout << "Agent\n";
-			for (uint32_t k = BOARD_SIZE; k--;)
+			cout << "Agent State:\n";
+			for (uint32_t k = 0; k < BOARD_SIZE; k++)
 			{
-				for (uint32_t l = BOARD_SIZE; l--;)
-					cout << state[l + k * BOARD_SIZE] << " ";
+				for (uint32_t l = 0; l < BOARD_SIZE; l++)
+					cout << state[k + l * BOARD_SIZE] << " ";
 				cout << "\n";
 			}
 			cout << "\n";
@@ -213,8 +199,14 @@ int main()
 	}
 
 	//print agents
-	for (uint32_t i = AGENTS; i--;)
-		cout << "Agent " << i << " score: " << agents[i].score << "\n";
+	agent = agents.data();
+	for (uint32_t i = AGENTS; i--; agent++)
+		cout << "Agent " << i << " Score: " << agent->score << "\n";
+
+	// sort agents by score, then if they are alive
 
 	return 0;
+}
+
+void RadixSort32(uint32_t arr[], uint32_t size) {
 }
