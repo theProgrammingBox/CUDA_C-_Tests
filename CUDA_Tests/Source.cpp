@@ -59,8 +59,7 @@ int main()
 
 	for (int i = 4; i--;)
 	{
-		int* a = new int((random() & 7) - 3);
-		arr.push_back(a);
+		arr.push_back(new int((random() & 7) - 3));
 	}
 
 	int** arr2 = new int* [arr.size()];
