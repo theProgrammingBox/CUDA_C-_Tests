@@ -43,6 +43,7 @@ int main()
 	const uint32_t BOARD_SIZE = 3;
 	const uint32_t STATE_DIM = BOARD_SIZE * BOARD_SIZE;
 	const uint32_t ACTION_DIM = 4;
+	const uint32_t MAX_EPISODES = 4;
 
 	class agentAttributes
 	{
@@ -51,12 +52,14 @@ int main()
 		uint32_t y;
 		float endState;
 		bool isAlive;
+		uint32_t score;
 
 		agentAttributes()
 		{
 			x = random() % BOARD_SIZE;
 			y = random() % BOARD_SIZE;
 			isAlive = true;
+			score = 0;
 		}
 	};
 
@@ -71,6 +74,7 @@ int main()
 			float* states;
 			float* actions;
 			agentAttributes** agentReferences;
+			//float* statesGPU;
 
 			Moment(uint32_t agentsPresent)
 			{
@@ -79,6 +83,7 @@ int main()
 				actions = new float[ACTION_DIM * agentsPresent];
 				agentReferences = new agentAttributes * [agentsPresent];
 				memset(states, 0, sizeof(float) * STATE_DIM * agentsPresent);
+				//cudaMalloc(&statesGPU, sizeof(float) * STATE_DIM * agentsPresent);
 			}
 
 			Moment(Moment&& other) noexcept
@@ -87,6 +92,7 @@ int main()
 				states = other.states;
 				actions = other.actions;
 				agentReferences = other.agentReferences;
+				//statesGPU = other.statesGPU;
 			}
 		};
 
@@ -99,6 +105,7 @@ int main()
 				delete[] moment.states;
 				delete[] moment.actions;
 				delete[] moment.agentReferences;
+				//cudaFree(moment.statesGPU);
 			}
 		}
 
@@ -115,12 +122,13 @@ int main()
 
 	History history;
 
-	const uint32_t AGENTS = 100;
+	const uint32_t AGENTS = 8;
 
 	for (uint32_t i = AGENTS; i--;)
 		agents.push_back(agentAttributes());
 
 	uint32_t numAlive = AGENTS;
+	uint32_t episode = MAX_EPISODES;
 	do
 	{
 		History::Moment moment(numAlive);
@@ -178,28 +186,35 @@ int main()
 				}
 				break;
 			}
+			(*agentReferences)->score += (*agentReferences)->isAlive;
 		}
 
 		history.addMoment(std::move(moment));
-	} while (numAlive);
+	} while (numAlive && --episode);
 
-	cout << "History size: " << history.numMoments() << "\n";
+	// print history
 	for (uint32_t i = history.numMoments(); i--;)
 	{
 		cout << "Moment " << i << "\n";
 		History::Moment& moment = history.history[i];
-		for (uint32_t j = moment.numAgents; j--;)
+		agentAttributes** agentReferences = moment.agentReferences;
+		float* state = moment.states;
+		for (uint32_t j = moment.numAgents; j--; agentReferences++, state += STATE_DIM)
 		{
-			cout << "Agent " << j << "\n";
+			cout << "Agent\n";
 			for (uint32_t k = BOARD_SIZE; k--;)
 			{
 				for (uint32_t l = BOARD_SIZE; l--;)
-					cout << moment.states[j * STATE_DIM + k + l * BOARD_SIZE] << " ";
+					cout << state[l + k * BOARD_SIZE] << " ";
 				cout << "\n";
 			}
 			cout << "\n";
 		}
 	}
+
+	//print agents
+	for (uint32_t i = AGENTS; i--;)
+		cout << "Agent " << i << " score: " << agents[i].score << "\n";
 
 	return 0;
 }
