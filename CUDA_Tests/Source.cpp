@@ -54,39 +54,34 @@ int main()
 	
 	vector<int*> arr;
 
+	//	temp vars	//
+	int counter;
 	int** tempArr;
 	int** tempArr2;
+	//		//		//
 
-	for (int i = 4; i--;)
-	{
-		arr.push_back(new int((random() & 7) - 3));
-	}
+	for (int i = 4; i--;) arr.push_back(new int((random() & 7) - 3));
 
 	int** arr2 = new int* [arr.size()];
-
-	tempArr = arr.data();
-	tempArr2 = arr2;
-	for (int i = arr.size(); i--; tempArr++, tempArr2++)
-		*tempArr2 = *tempArr;
+	
+	for (counter = arr.size(), tempArr = arr.data(), tempArr2 = arr2;
+		counter--; tempArr++, tempArr2++) *tempArr2 = *tempArr;
 	
 	cout << "PreSort:\n";
-	tempArr = arr.data();
-	for (int i = arr.size(); i--; tempArr++)
-		cout << **tempArr << " ";
+	for (counter = arr.size(), tempArr = arr.data();
+		counter--; tempArr++) cout << **tempArr << ' ';
 	cout << "\n\n";
 
 	sort(arr.begin(), arr.end(), [](int* a, int* b) { return *a < *b; });
 
 	cout << "PostSort:\n";
-	tempArr = arr.data();
-	for (int i = arr.size(); i--; tempArr++)
-		cout << **tempArr << " ";
+	for (counter = arr.size(), tempArr = arr.data();
+		counter--; tempArr++) cout << **tempArr << ' ';
 	cout << "\n\n";
 	
 	cout << "DeRef:\n";
-	tempArr2 = arr2;
-	for (int i = arr.size(); i--; tempArr2++)
-		cout << **tempArr2 << " ";
+	for (counter = arr.size(), tempArr = arr2;
+		counter--; tempArr++) cout << **tempArr << ' ';
 	cout << "\n\n";
 
 	return 0;
