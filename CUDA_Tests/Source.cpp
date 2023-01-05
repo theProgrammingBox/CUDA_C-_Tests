@@ -3,12 +3,14 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <algorithm>
 
 using std::cout;
 using std::vector;
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
+using std::sort;
 
 struct xorwow32
 {
@@ -117,13 +119,26 @@ public:
 			}
 		}
 
+		// make the alive bit the most significant bit in the score
+		agent = agents.data();
+		for (uint32_t i = AGENTS; i--; agent++)
+			agent->score = (uint32_t(agent->isAlive) << 31) | agent->score;
+
+		// sort agents by score, then if they are alive
+		sort(agents.begin(), agents.end(), [](const agentAttributes& a, const agentAttributes& b)
+			{ 
+				return a.score > b.score; 
+			});
+
+		// reset the alive bit
+		agent = agents.data();
+		for (uint32_t i = AGENTS; i--; agent++)
+			agent->score = agent->score & 0x7FFFFFFF;
+
 		//print agents
 		agent = agents.data();
 		for (uint32_t i = AGENTS; i--; agent++)
 			cout << "Agent " << i << " Score: " << agent->score << "\n";
-
-		// sort agents by score, then if they are alive
-		RadixSort32(agents.data(), AGENTS);
 	}
 
 private:
@@ -216,11 +231,6 @@ private:
 	
 	vector<agentAttributes> agents;
 	History history;
-	
-	void RadixSort32(agentAttributes* agents, uint32_t numAgents)
-	{
-
-	}
 };
 
 int main()
