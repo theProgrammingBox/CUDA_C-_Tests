@@ -1,86 +1,55 @@
-//#include <cublas_v2.h>
-//#include <curand.h>
-#include <iostream>
-#include <vector>
 #include <chrono>
-#include <algorithm>
+#include <functional>
+#include <iostream>
 
-using std::cout;
-using std::vector;
-using std::chrono::high_resolution_clock;
-using std::chrono::duration_cast;
-using std::chrono::nanoseconds;
-using std::sort;
+template <typename Func, typename... Args>
+double measure_time(Func&& func, Args&&... args) {
+    // Use the high-resolution clock to measure the time elapsed
+    auto start = std::chrono::high_resolution_clock::now();
+    std::invoke(std::forward<Func>(func), std::forward<Args>(args)...);
+    auto end = std::chrono::high_resolution_clock::now();
 
-// make one global random
-static struct xorwow32
+    // Calculate the elapsed time in seconds and return it
+    auto elapsed = std::chrono::duration_cast<std::chrono::duration<double>>(end - start);
+    return elapsed.count();
+}
+
+void test_function(uint32_t size)
 {
-	uint32_t state[6];
+	uint32_t x = 0;
+	for (uint32_t i = 0; i < size; i++)
+		x = (x << 1) - 1;
+}
 
-	xorwow32(uint32_t seed) : state{
-		seed ^ 123456789,
-		seed ^ 362436069,
-		seed ^ 521288629,
-		seed ^ 88675123,
-		seed ^ 5783321,
-		seed ^ 6615241 } {}
-
-	uint32_t operator()()
-	{
-		uint32_t t = state[0] ^ (state[0] >> 2);
-		memcpy(state, state + 1, 16);
-		state[4] ^= (state[4] << 4) ^ (t ^ (t << 1));
-		return (state[5] += 362437) + state[4];
-	}
-
-	float operator()(float min, float max) { return operator()() * 2.3283064371e-10 * (max - min) + min; }	// 0 & 1 inclusive, 2.3283064365e-10 for exclusive 1
-} random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
-
-
-int main()
+void test_function2(uint32_t size)
 {
-	// initialize the vector with floats
-	// make an array holding the float's references
-	// sort the vector
-	// print the vector
-	// print the dereferenced references
+	uint32_t i = size;
+	uint32_t x = 0;
+	while (i--)
+		x = (x << 1) - 1;
+}
 
-	// the vector should be sorted
-	// the dereferenced references should not be sorted
+void test_function3(uint32_t size)
+{
+	uint32_t i, x;
+	for (i = size, x = 0; i--; x = (x << 1) - 1);
+}
 
-	xorwow32 random2(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
+int main() {
+	auto time1 = 0.0;
+	auto time2 = 0.0;
+	auto time3 = 0.0;
 	
-	vector<int*> arr;
-
-	//	temp vars	//
-	int counter;
-	int** tempArr;
-	int** tempArr2;
-	//		//		//
-
-	for (counter = 4; counter--;) arr.push_back(new int((random() & 7) - 3));
-
-	int** arr2 = new int* [arr.size()];
+	for (int i = 0; i < 10; ++i)
+		time2 += measure_time(test_function, 100000000);
+	for (int i = 0; i < 10; ++i)
+		time1 += measure_time(test_function2, 100000000);
+	for (int i = 0; i < 10; ++i)
+		time3 += measure_time(test_function3, 100000000);
 	
-	for (counter = arr.size(), tempArr = arr.data(), tempArr2 = arr2;
-		counter--; tempArr++, tempArr2++) *tempArr2 = *tempArr;
-	
-	cout << "PreSort:\n";
-	for (counter = arr.size(), tempArr = arr.data();
-		counter--; tempArr++) cout << **tempArr << ' ';
-	cout << "\n\n";
+	std::cout << time1 / 10 << " seconds" << std::endl;
+	std::cout << time2 / 10 << " seconds" << std::endl;
+	std::cout << time3 / 10 << " seconds" << std::endl;
 
-	sort(arr.begin(), arr.end(), [](int* a, int* b) { return *a < *b; });
-
-	cout << "PostSort:\n";
-	for (counter = arr.size(), tempArr = arr.data();
-		counter--; tempArr++) cout << **tempArr << ' ';
-	cout << "\n\n";
-	
-	cout << "DeRef:\n";
-	for (counter = arr.size(), tempArr = arr2;
-		counter--; tempArr++) cout << **tempArr << ' ';
-	cout << "\n\n";
-
-	return 0;
+    return 0;
 }
