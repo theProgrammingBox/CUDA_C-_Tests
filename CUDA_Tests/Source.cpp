@@ -14,11 +14,12 @@ double measure_time(Func&& func, Args&&... args) {
     return elapsed.count();
 }
 
-void test_function(uint32_t size)
+void test_function1(uint32_t size)
 {
 	uint32_t x = 0;
 	for (uint32_t i = 0; i < size; i++)
-		x = (x << 1) - 1;
+		x = x + 9 >> 1;
+	std::cout << x << std::endl;
 }
 
 void test_function2(uint32_t size)
@@ -26,13 +27,15 @@ void test_function2(uint32_t size)
 	uint32_t i = size;
 	uint32_t x = 0;
 	while (i--)
-		x = (x << 1) - 1;
+		x = x + 9 >> 1;
+	std::cout << x << std::endl;
 }
 
 void test_function3(uint32_t size)
 {
 	uint32_t i, x;
-	for (i = size, x = 0; i--; x = (x << 1) - 1);
+	for (i = size, x = 0; i--; x = x + 9 >> 1);
+	std::cout << x << std::endl;
 }
 
 int main() {
@@ -41,7 +44,7 @@ int main() {
 	auto time3 = 0.0;
 	
 	for (int i = 0; i < 10; ++i)
-		time2 += measure_time(test_function, 100000000);
+		time2 += measure_time(test_function1, 100000000);
 	for (int i = 0; i < 10; ++i)
 		time1 += measure_time(test_function2, 100000000);
 	for (int i = 0; i < 10; ++i)
