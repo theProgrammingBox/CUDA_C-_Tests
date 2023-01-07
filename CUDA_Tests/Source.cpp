@@ -69,13 +69,63 @@ public:
 	void Run()
 	{
 		AddXAgents(NUM_AGENTS);
-
-		uint32_t numAlive = agentPointers.size();
+		
 		uint32_t numMoments = MAX_MOMENTS;
 		do
 		{
-			Step();
-		} while (numAlive && numMoments--);
+			cout << agentsAlive << '\n';
+			Moment moment(agentsAlive);
+
+			agentPointersIterator = moment.agentPointers;
+			hiddenStatePointersIterator = moment.hiddenStatePointers;
+			for (Agent* agent : agentPointers)
+			{
+				if (agent->isAlive)
+				{
+					*agentPointersIterator = agent;
+					*hiddenStatePointersIterator = agent->hiddenState;
+					agentPointersIterator++;
+					hiddenStatePointersIterator++;
+				}
+			}
+
+			matrixIterator = moment.inputs;
+			shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
+			agentPointersIterator = moment.agentPointers;
+			hiddenStatePointersIterator = moment.hiddenStatePointers;
+			for (counter = moment.agentsAlive; counter--; matrixIterator += INPUT_WIDTH, shiftedMatrixIterator += INPUT_WIDTH)
+			{
+				memcpy(matrixIterator, *hiddenStatePointersIterator, HIDDEN_SIZE * sizeof(float));
+				GetInput(*agentPointersIterator, shiftedMatrixIterator);
+				hiddenStatePointersIterator++;
+				agentPointersIterator++;
+			}
+
+			cpuSgemmStridedBatched(
+				false, false,
+				OUTPUT_WIDTH, moment.agentsAlive, INPUT_WIDTH,
+				&ONE,
+				weights, OUTPUT_WIDTH, ZERO,
+				moment.inputs, INPUT_WIDTH, ZERO,
+				&ZERO,
+				moment.outputs, OUTPUT_WIDTH, ZERO,
+				0);
+
+			//activation function placeholder
+
+			matrixIterator = moment.outputs;
+			shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
+			agentPointersIterator = moment.agentPointers;
+			actionsIterator = moment.actions;
+			for (counter = moment.agentsAlive; counter--; agentPointersIterator++, actionsIterator++, matrixIterator += OUTPUT_WIDTH, shiftedMatrixIterator += OUTPUT_WIDTH)
+			{
+				(*agentPointersIterator)->hiddenState = matrixIterator;
+				GetAction(shiftedMatrixIterator, actionsIterator);
+				Act(*agentPointersIterator, actionsIterator);
+			}
+
+			history.push_back(moment);
+		} while (agentsAlive && numMoments--);
 		
 		KeepTopAgents(TOP_PERCENT);
 		EraseAgents();
@@ -111,14 +161,14 @@ private:
 			inputs(new float[INPUT_WIDTH * agentsAlive]),
 			outputs(new float[OUTPUT_WIDTH * agentsAlive]) {}
 
-		~Moment()
+		/*~Moment()
 		{
 			delete[] agentPointers;
 			delete[] hiddenStatePointers;
 			delete[] actions;
 			delete[] inputs;
 			delete[] outputs;
-		}
+		}*/
 	};
 
 	float* initialState;	// matrix of initial states in  memory
@@ -213,11 +263,11 @@ private:
 			matrix[i] = random(min, max);
 	}
 
-	void GetInput(Agent* a, float* input)
+	void GetInput(Agent* agent, float* input)
 	{
 		memset(input, 0, INPUT_SIZE * sizeof(float));
-		input[a->px + a->py * BOARD_SIZE] = -1;
-		input[a->gx + a->gy * BOARD_SIZE + INPUT_SIZE] = 1;
+		input[agent->px + agent->py * BOARD_SIZE] = -1;
+		input[agent->gx + agent->gy * BOARD_SIZE + INPUT_SIZE] = 1;
 	}
 
 	void GetAction(float* outputs, uint32_t* action)
@@ -245,54 +295,28 @@ private:
 		}
 	}
 
-	void Step()
+	void Act(Agent* agent, uint32_t* action)
 	{
-		Moment moment(agentsAlive);
-		
-		agentPointersIterator = moment.agentPointers;
-		hiddenStatePointersIterator = moment.hiddenStatePointers;
-		for (Agent* agent : agentPointers)
+		switch (*action)
 		{
-			if (agent->isAlive)
-			{
-				*agentPointersIterator++ = agent;
-				*hiddenStatePointersIterator++ = agent->hiddenState;
-			}
+		case 0:
+			agent->isAlive = agent->px > 0;
+			agent->px -= agent->isAlive;
+			break;
+		case 1:
+			agent->isAlive = agent->px < BOARD_SIZE - 1;
+			agent->px += agent->isAlive;
+			break;
+		case 2:
+			agent->isAlive = agent->py > 0;
+			agent->py -= agent->isAlive;
+			break;
+		case 3:
+			agent->isAlive = agent->py < BOARD_SIZE - 1;
+			agent->py += agent->isAlive;
+			break;
 		}
-
-		matrixIterator = moment.inputs;
-		shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
-		agentPointersIterator = moment.agentPointers;
-		hiddenStatePointersIterator = moment.hiddenStatePointers;
-		for (counter = moment.agentsAlive; counter--; matrixIterator += INPUT_WIDTH, shiftedMatrixIterator += INPUT_WIDTH)
-		{
-			memcpy(matrixIterator, *hiddenStatePointersIterator++, HIDDEN_SIZE * sizeof(float));
-			GetInput(*agentPointersIterator++, shiftedMatrixIterator);
-		}
-		
-		cpuSgemmStridedBatched(
-			false, false,
-			OUTPUT_WIDTH, moment.agentsAlive, INPUT_WIDTH,
-			&ONE,
-			weights, OUTPUT_WIDTH, ZERO,
-			moment.inputs, INPUT_WIDTH, ZERO,
-			&ZERO,
-			moment.outputs, OUTPUT_WIDTH, ZERO,
-			0);
-
-		//activation function placeholder
-
-		matrixIterator = moment.outputs;
-		shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
-		agentPointersIterator = moment.agentPointers;
-		actionsIterator = moment.actions;
-		for (counter = moment.agentsAlive; counter--; agentPointersIterator++, matrixIterator += OUTPUT_WIDTH, shiftedMatrixIterator += OUTPUT_WIDTH)
-		{
-			(*agentPointersIterator)->hiddenState = matrixIterator;
-			GetAction(shiftedMatrixIterator, actionsIterator++);
-		}
-		
-		history.push_back(moment);
+		agentsAlive -= !agent->isAlive;
 	}
 
 	void KeepTopAgents(float topPercent)
