@@ -3,12 +3,14 @@
 #include <chrono>
 #include <iostream>
 #include <vector>
+#include <algorithm>
 
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 using std::cout;
 using std::vector;
+using std::sort;
 
 static struct xorwow32
 {
@@ -45,16 +47,22 @@ public:
 	static constexpr uint32_t INPUT_SIZE = BOARD_SIZE * BOARD_SIZE;
 	static constexpr uint32_t OUTPUT_SIZE = 5;
 	static constexpr uint32_t MAX_MOMENTS = 100;
+	static constexpr uint32_t INPUT_WIDTH = HIDDEN_SIZE + INPUT_SIZE;
+	static constexpr uint32_t OUTPUT_WIDTH = HIDDEN_SIZE + OUTPUT_SIZE;
+	static constexpr float TOP_PERCENT = 0.4;
+	
+	static constexpr float ONE = 1.0f;
+	static constexpr float ZERO = 0.0f;
 
 	Environment()
 	{
 		agentsAlive = 0;
 
 		// initialize global parmeters
-		weights = new float[(HIDDEN_SIZE + INPUT_SIZE) * (HIDDEN_SIZE + OUTPUT_SIZE)];
+		weights = new float[INPUT_WIDTH * OUTPUT_WIDTH];
 		initialState = new float[HIDDEN_SIZE];
 
-		cpuGenerateUniform(weights, (HIDDEN_SIZE + INPUT_SIZE) * (HIDDEN_SIZE + OUTPUT_SIZE), -1.0f, 1.0f);
+		cpuGenerateUniform(weights, INPUT_WIDTH * OUTPUT_WIDTH, -1.0f, 1.0f);
 		cpuGenerateUniform(initialState, HIDDEN_SIZE, -1.0f, 1.0f);
 	}
 
@@ -68,7 +76,8 @@ public:
 		{
 			Step();
 		} while (numAlive && numMoments--);
-
+		
+		KeepTopAgents(TOP_PERCENT);
 		EraseAgents();
 	}
 
@@ -99,8 +108,8 @@ private:
 			agentPointers(new Agent* [agentsAlive]),
 			hiddenStatePointers(new float* [agentsAlive]),
 			actions(new uint32_t[agentsAlive]),
-			inputs(new float[(HIDDEN_SIZE + INPUT_SIZE) * agentsAlive]),
-			outputs(new float[(HIDDEN_SIZE + OUTPUT_SIZE) * agentsAlive]) {}
+			inputs(new float[INPUT_WIDTH * agentsAlive]),
+			outputs(new float[OUTPUT_WIDTH * agentsAlive]) {}
 
 		~Moment()
 		{
@@ -126,8 +135,7 @@ private:
 	float** hiddenStatePointersIterator;
 	float* matrixIterator;
 	float* shiftedMatrixIterator;
-	float input[INPUT_SIZE];
-	float output[OUTPUT_SIZE];
+	uint32_t* actionsIterator;
 	//			//			//
 
 	void RandomizeAgentPosition(Agent* a)
@@ -212,6 +220,31 @@ private:
 		input[a->gx + a->gy * BOARD_SIZE + INPUT_SIZE] = 1;
 	}
 
+	void GetAction(float* outputs, uint32_t* action)
+	{
+		// softmax
+		float max = outputs[0];
+		for (uint32_t i = 1; i < OUTPUT_SIZE; i++)
+			if (outputs[i] > max) max = outputs[i];
+		float sum = 0;
+		for (uint32_t i = OUTPUT_SIZE; i--;)
+		{
+			outputs[i] = exp(outputs[i] - max);
+			sum += outputs[i];
+		}
+
+		float r = random(0, sum);
+		for (uint32_t i = 0; i < OUTPUT_SIZE; i++)
+		{
+			r -= outputs[i];
+			if (r <= 0)
+			{
+				*action = i;
+				return;
+			}
+		}
+	}
+
 	void Step()
 	{
 		Moment moment(agentsAlive);
@@ -231,15 +264,45 @@ private:
 		shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
 		agentPointersIterator = moment.agentPointers;
 		hiddenStatePointersIterator = moment.hiddenStatePointers;
-		for (counter = moment.agentsAlive; counter--; matrixIterator += HIDDEN_SIZE + INPUT_SIZE, shiftedMatrixIterator += HIDDEN_SIZE + INPUT_SIZE)
+		for (counter = moment.agentsAlive; counter--; matrixIterator += INPUT_WIDTH, shiftedMatrixIterator += INPUT_WIDTH)
 		{
 			memcpy(matrixIterator, *hiddenStatePointersIterator++, HIDDEN_SIZE * sizeof(float));
 			GetInput(*agentPointersIterator++, shiftedMatrixIterator);
 		}
+		
+		cpuSgemmStridedBatched(
+			false, false,
+			OUTPUT_WIDTH, moment.agentsAlive, INPUT_WIDTH,
+			&ONE,
+			weights, OUTPUT_WIDTH, ZERO,
+			moment.inputs, INPUT_WIDTH, ZERO,
+			&ZERO,
+			moment.outputs, OUTPUT_WIDTH, ZERO,
+			0);
 
-		//mat mul placeholder
+		//activation function placeholder
+
+		matrixIterator = moment.outputs;
+		shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
+		agentPointersIterator = moment.agentPointers;
+		actionsIterator = moment.actions;
+		for (counter = moment.agentsAlive; counter--; agentPointersIterator++, matrixIterator += OUTPUT_WIDTH, shiftedMatrixIterator += OUTPUT_WIDTH)
+		{
+			(*agentPointersIterator)->hiddenState = matrixIterator;
+			GetAction(shiftedMatrixIterator, actionsIterator++);
+		}
 		
 		history.push_back(moment);
+	}
+
+	void KeepTopAgents(float topPercent)
+	{
+		sort(agentPointers.begin(), agentPointers.end(), [](Agent* a, Agent* b) { return a->isAlive > b->isAlive; });
+		
+		for (counter = agentPointers.size() * topPercent; counter--;)
+		{
+			agentPointers[counter]->endState = true;
+		}
 	}
 };
 
