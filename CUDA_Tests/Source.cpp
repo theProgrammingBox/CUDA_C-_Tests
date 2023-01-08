@@ -70,6 +70,13 @@ const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, fl
 		matrix[i] = random(min, max);
 }
 
+/*
+TODO:
+1. Debug forward propagate
+2. Add back propagate
+3. Seperate Trainer and Enviroment class
+*/
+
 class Environment
 {
 public:
@@ -160,7 +167,7 @@ private:
 	vector<Agent*> agentPointers;	// vector of pointers to each agent
 	vector<Moment> history;			// vector of moments
 
-	uint32_t AgentsAlive()
+	uint32_t AgentsAlive()	// idk func, leaning towards enviroment func
 	{
 		uint32_t agentsAlive = 0;
 		for (Agent* agent : agentPointers)
@@ -168,13 +175,13 @@ private:
 		return agentsAlive;
 	}
 
-	void RandomizeParams()
+	void RandomizeParams()	// trainer func
 	{
 		cpuGenerateUniform(weights, INPUT_WIDTH * OUTPUT_WIDTH, -1.0f, 1.0f);
 		cpuGenerateUniform(initialState, HIDDEN_SIZE, -1.0f, 1.0f);
 	}
 
-	void InitParams()
+	void InitParams()	// trainer func
 	{
 		weights = new float[INPUT_WIDTH * OUTPUT_WIDTH];
 		initialState = new float[HIDDEN_SIZE];
@@ -200,7 +207,7 @@ private:
 		} while (a->gx == a->px && a->gy == a->py);
 	}
 
-	void AddNewAgents(uint32_t numAgents)	// idk func
+	void AddNewAgents(uint32_t numAgents)	// idk func, leaning towards environment
 	{
 		for (uint32_t counter = numAgents; counter--;)
 		{
@@ -214,7 +221,7 @@ private:
 		}
 	}
 
-	void AddAgentsAliveToMoment(Moment* moment)	// idk func
+	void AddAgentsAliveToMoment(Moment* moment)	// idk func, leaning towards environment
 	{
 		Agent** agentPointersIterator = moment->agentPointers;
 		float** hiddenStatePointersIterator = moment->hiddenStatePointers;
@@ -313,10 +320,13 @@ private:
 			agent->isAlive = agent->py < BOARD_SIZE - 1;
 			agent->py += agent->isAlive;
 			break;
+		case 4:
+			// no move
+			break;
 		}
 	}
 
-	void ActMomentOutputs(Moment* moment)
+	void ActMomentOutputs(Moment* moment)	// idk func, leaning towards environment func
 	{
 		float* matrixIterator = moment->outputs;
 		float* shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
@@ -334,7 +344,7 @@ private:
 		}
 	}
 
-	void ForwardPropagate()
+	void ForwardPropagate()	// idk func, leaning towards environment func
 	{
 		uint32_t numMoments = MAX_MOMENTS;
 		uint32_t agentsAlive;
@@ -351,12 +361,12 @@ private:
 		};
 	}
 
-	void BackPropagate()
+	void BackPropagate()	//idk func, leaning towards trainer func
 	{
 		// placeholder for logic
 	}
 
-	void ApplyGradients()
+	void ApplyGradients()	// idk func, leaning towards trainer func
 	{
 		// placeholder for logic
 
@@ -364,7 +374,7 @@ private:
 		memset(initialStateGradient, 0, HIDDEN_SIZE * sizeof(float));
 	}
 
-	void KeepTopAgents(float topPercent)
+	void KeepTopAgents(float topPercent)	// idk func, leaning towards environment func
 	{
 		sort(agentPointers.begin(), agentPointers.end(), [](Agent* a, Agent* b) { return a->isAlive > b->isAlive; });
 		
@@ -374,19 +384,19 @@ private:
 		}
 	}
 
-	void ClearAgents()
+	void ClearAgents()	// idk func, leaning towards environment func
 	{
 		for (Agent* a : agentPointers) delete a;
 		agentPointers.clear();
 	}
 
-	void ClearHistory()
+	void ClearHistory()	// idk func, leaning towards environment func
 	{
 		for (Moment& m : history) delete& m;
 		history.clear();
 	}
 
-	void ClearParams()
+	void ClearParams()	// idk func, leaning towards trainer func
 	{
 		delete[] weights;
 		delete[] initialState;
