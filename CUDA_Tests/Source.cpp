@@ -74,45 +74,19 @@ const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, fl
 TODO:
 1. Debug forward propagate
 2. Add back propagate
-3. Seperate Trainer and Enviroment class
+3. Add apply gradient
+4. Seperate Trainer and Enviroment class
 */
 
 class Environment
 {
-public:
-	Environment()
-	{
-		InitParams();
-	}
-
-	~Environment()
-	{
-		ClearAgents();
-		ClearHistory();
-		ClearParams();
-	}
-
-	void Run()
-	{
-		while (true)
-		{
-			AddNewAgents(NUM_AGENTS);
-			ForwardPropagate();
-			KeepTopAgents(TOP_PERCENT);
-			BackPropagate();
-			ApplyGradients();
-			ClearAgents();
-			ClearHistory();
-		}
-	}
-
 private:
-	static constexpr uint32_t NUM_AGENTS = 64;
+	static constexpr uint32_t NUM_AGENTS = 1;
 	static constexpr uint32_t HIDDEN_SIZE = 8;
 	static constexpr uint32_t BOARD_SIZE = 3;
 	static constexpr uint32_t INPUT_SIZE = BOARD_SIZE * BOARD_SIZE;
 	static constexpr uint32_t OUTPUT_SIZE = 5;
-	static constexpr uint32_t MAX_MOMENTS = 100;
+	static constexpr uint32_t MAX_MOMENTS = 4;
 	static constexpr uint32_t INPUT_WIDTH = HIDDEN_SIZE + INPUT_SIZE;
 	static constexpr uint32_t OUTPUT_WIDTH = HIDDEN_SIZE + OUTPUT_SIZE;
 	static constexpr float TOP_PERCENT = 0.4;
@@ -121,10 +95,10 @@ private:
 	float* weights;					// weights of the network, stored in GPU memory
 	float* initialStateGradient;	// gradient of the initial state, stored in GPU memory
 	float* weightsGradient;			// gradient of the weights, stored in GPU memory
-	
+
 	static constexpr float ONE = 1.0f;
 	static constexpr float ZERO = 0.0f;
-	
+
 	struct Agent
 	{
 		uint32_t px;			// player x
@@ -146,7 +120,7 @@ private:
 		uint32_t* actions;				// array of each agent's action represented as an index
 
 
-		Moment(uint32_t agentsAlive) : 
+		Moment(uint32_t agentsAlive) :
 			agentsAlive(agentsAlive),
 			agentPointers(new Agent* [agentsAlive]),
 			hiddenStatePointers(new float* [agentsAlive]),
@@ -154,14 +128,14 @@ private:
 			outputs(new float[OUTPUT_WIDTH * agentsAlive]),
 			actions(new uint32_t[agentsAlive]) {}
 
-		~Moment()
+		/*~Moment()	// deconstructor is in ClearHistory() because error otherwise
 		{
 			delete[] agentPointers;
 			delete[] hiddenStatePointers;
 			delete[] inputs;
 			delete[] outputs;
 			delete[] actions;
-		}
+		}*/
 	};
 
 	vector<Agent*> agentPointers;	// vector of pointers to each agent
@@ -350,13 +324,14 @@ private:
 		uint32_t agentsAlive;
 		while ((agentsAlive = AgentsAlive()) && numMoments--)
 		{
-			cout << "agentsAlive: " << agentsAlive << '\n';
+			PrintAgentsInfo();
 			Moment moment(agentsAlive);
 
 			AddAgentsAliveToMoment(&moment);
-			InitMomentInputs(&moment);
+			PrintMomentInfo(&moment);
+			/*InitMomentInputs(&moment);
 			ForwardPropagateMoment(&moment);
-			ActMomentOutputs(&moment);
+			ActMomentOutputs(&moment);*/
 			history.push_back(moment);
 		};
 	}
@@ -377,7 +352,7 @@ private:
 	void KeepTopAgents(float topPercent)	// idk func, leaning towards environment func
 	{
 		sort(agentPointers.begin(), agentPointers.end(), [](Agent* a, Agent* b) { return a->isAlive > b->isAlive; });
-		
+
 		for (uint32_t counter = agentPointers.size() * topPercent; counter--;)
 		{
 			agentPointers[counter]->endState = true;
@@ -392,7 +367,14 @@ private:
 
 	void ClearHistory()	// idk func, leaning towards environment func
 	{
-		for (Moment& m : history) delete& m;
+		for (Moment& m : history)
+		{
+			delete[] m.agentPointers;
+			delete[] m.hiddenStatePointers;
+			delete[] m.inputs;
+			delete[] m.outputs;
+			delete[] m.actions;
+		}
 		history.clear();
 	}
 
@@ -403,6 +385,109 @@ private:
 		delete[] weightsGradient;
 		delete[] initialStateGradient;
 	}
+	
+public:
+	Environment()
+	{
+		InitParams();
+	}
+
+	~Environment()
+	{
+		ClearAgents();
+		ClearHistory();
+		ClearParams();
+	}
+
+	void PrintAgentsInfo()
+	{
+		cout << "There are " << agentPointers.size() << " agents alive.\n\n";
+		for (Agent* agentPointer : agentPointers)
+		{
+			cout << "Player Position: " << agentPointer->px << ", " << agentPointer->py << '\n';
+			cout << "Goal Position: " << agentPointer->gx << ", " << agentPointer->gy << '\n';
+			cout << "Hidden State: ";
+			for (uint32_t i = 0; i < HIDDEN_SIZE; i++)
+			{
+				cout << agentPointer->hiddenState[i] << ' ';
+			}
+			cout << '\n';
+			cout << "Agent is " << (agentPointer->isAlive ? "alive" : "dead") << '\n';
+			cout << "Agent is " << (agentPointer->endState ? "a survivor" : "not a survivor") << '\n';
+			cout << '\n';
+		}
+	}
+
+	void PrintParamsInfo()
+	{
+		cout << "Weights:\n";
+		for (uint32_t i = 0; i < INPUT_WIDTH; i++)
+		{
+			for (uint32_t j = 0; j < OUTPUT_WIDTH; j++)
+			{
+				cout << weights[i * OUTPUT_WIDTH + j] << ' ';
+			}
+			cout << '\n';
+		}
+		cout << '\n';
+
+		cout << "Initial State:\n";
+		for (uint32_t i = 0; i < HIDDEN_SIZE; i++)
+		{
+			cout << initialState[i] << ' ';
+		}
+		cout << "\n\n";
+	}
+
+	void PrintMomentInfo(Moment* moment)
+	{
+		cout << "There are " << moment->agentsAlive << " agents alive at this moment.\n\n";
+		/*cout << "Moment Inputs:\n";
+		for (uint32_t i = 0; i < moment->agentsAlive; i++)
+		{
+			for (uint32_t j = 0; j < INPUT_WIDTH; j++)
+			{
+				cout << moment->inputs[i * INPUT_WIDTH + j] << ' ';
+			}
+			cout << '\n';
+		}
+		cout << '\n';
+
+		cout << "Moment Outputs:\n";
+		for (uint32_t i = 0; i < moment->agentsAlive; i++)
+		{
+			for (uint32_t j = 0; j < OUTPUT_WIDTH; j++)
+			{
+				cout << moment->outputs[i * OUTPUT_WIDTH + j] << ' ';
+			}
+			cout << '\n';
+		}
+		cout << '\n';
+
+		cout << "Moment Actions:\n";
+		for (uint32_t i = 0; i < moment->agentsAlive; i++)
+		{
+			cout << moment->actions[i] << ' ';
+		}
+		cout << '\n';*/
+	}
+
+	void Run()
+	{
+		PrintParamsInfo();
+		/*while (true)
+		{*/
+			AddNewAgents(NUM_AGENTS);
+			ForwardPropagate();
+			/*KeepTopAgents(TOP_PERCENT);
+			BackPropagate();
+			ApplyGradients();*/
+			ClearAgents();
+			PrintAgentsInfo();
+			/*ClearHistory();*/
+		/*}*/
+	}
+
 };
 
 int main() {
