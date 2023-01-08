@@ -38,32 +38,51 @@ static struct xorwow32
 	}
 } random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
 
+const static void cpuSgemmStridedBatched(
+	bool transB, bool transA,
+	int CCols, int CRows, int AColsBRows,
+	const float* alpha,
+	float* B, int ColsB, int SizeB,
+	float* A, int ColsA, int SizeA,
+	const float* beta,
+	float* C, int ColsC, int SizeC,
+	int batchCount)
+{
+	for (int b = batchCount; b--;)
+	{
+		for (int m = CCols; m--;)
+			for (int n = CRows; n--;)
+			{
+				float sum = 0;
+				for (int k = AColsBRows; k--;)
+					sum += (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]);
+				C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
+			}
+		A += SizeA;
+		B += SizeB;
+		C += SizeC;
+	}
+}
+
+const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, float max)
+{
+	for (uint32_t i = size; i--;)
+		matrix[i] = random(min, max);
+}
+
 class Environment
 {
 public:
-	static constexpr uint32_t NUM_AGENTS = 64;
-	static constexpr uint32_t HIDDEN_SIZE = 8;
-	static constexpr uint32_t BOARD_SIZE = 3;
-	static constexpr uint32_t INPUT_SIZE = BOARD_SIZE * BOARD_SIZE;
-	static constexpr uint32_t OUTPUT_SIZE = 5;
-	static constexpr uint32_t MAX_MOMENTS = 100;
-	static constexpr uint32_t INPUT_WIDTH = HIDDEN_SIZE + INPUT_SIZE;
-	static constexpr uint32_t OUTPUT_WIDTH = HIDDEN_SIZE + OUTPUT_SIZE;
-	static constexpr float TOP_PERCENT = 0.4;
-	
-	static constexpr float ONE = 1.0f;
-	static constexpr float ZERO = 0.0f;
-
 	Environment()
 	{
-		agentsAlive = 0;
+		InitParams();
+	}
 
-		// initialize global parmeters
-		weights = new float[INPUT_WIDTH * OUTPUT_WIDTH];
-		initialState = new float[HIDDEN_SIZE];
-
-		cpuGenerateUniform(weights, INPUT_WIDTH * OUTPUT_WIDTH, -1.0f, 1.0f);
-		cpuGenerateUniform(initialState, HIDDEN_SIZE, -1.0f, 1.0f);
+	~Environment()
+	{
+		ClearAgents();
+		ClearHistory();
+		ClearParams();
 	}
 
 	void Run()
@@ -71,7 +90,8 @@ public:
 		AddXAgents(NUM_AGENTS);
 		
 		uint32_t numMoments = MAX_MOMENTS;
-		do
+		uint32_t agentsAlive;
+		while ((agentsAlive = AgentsAlive()) && numMoments--)
 		{
 			cout << agentsAlive << '\n';
 			Moment moment(agentsAlive);
@@ -125,13 +145,28 @@ public:
 			}
 
 			history.push_back(moment);
-		} while (agentsAlive && numMoments--);
+		};
 		
 		KeepTopAgents(TOP_PERCENT);
-		EraseAgents();
+		
+		ClearAgents();
+		ClearHistory();
 	}
 
 private:
+	static constexpr uint32_t NUM_AGENTS = 64;
+	static constexpr uint32_t HIDDEN_SIZE = 8;
+	static constexpr uint32_t BOARD_SIZE = 3;
+	static constexpr uint32_t INPUT_SIZE = BOARD_SIZE * BOARD_SIZE;
+	static constexpr uint32_t OUTPUT_SIZE = 5;
+	static constexpr uint32_t MAX_MOMENTS = 100;
+	static constexpr uint32_t INPUT_WIDTH = HIDDEN_SIZE + INPUT_SIZE;
+	static constexpr uint32_t OUTPUT_WIDTH = HIDDEN_SIZE + OUTPUT_SIZE;
+	static constexpr float TOP_PERCENT = 0.4;
+	
+	static constexpr float ONE = 1.0f;
+	static constexpr float ZERO = 0.0f;
+	
 	struct Agent
 	{
 		uint32_t px;			// player x
@@ -161,14 +196,14 @@ private:
 			inputs(new float[INPUT_WIDTH * agentsAlive]),
 			outputs(new float[OUTPUT_WIDTH * agentsAlive]) {}
 
-		/*~Moment()
+		~Moment()
 		{
 			delete[] agentPointers;
 			delete[] hiddenStatePointers;
 			delete[] actions;
 			delete[] inputs;
 			delete[] outputs;
-		}*/
+		}
 	};
 
 	float* initialState;	// matrix of initial states in  memory
@@ -176,8 +211,6 @@ private:
 
 	vector<Agent*> agentPointers;	// vector that holds all agents in heap memory
 	vector<Moment> history;
-
-	uint32_t agentsAlive;
 
 	//		temp vars		//
 	uint32_t counter;
@@ -187,6 +220,28 @@ private:
 	float* shiftedMatrixIterator;
 	uint32_t* actionsIterator;
 	//			//			//
+
+	uint32_t AgentsAlive()
+	{
+		uint32_t agentsAlive = 0;
+		for (Agent* agent : agentPointers)
+			agentsAlive += agent->isAlive;
+		return agentsAlive;
+	}
+
+	void RandomizeParams()
+	{
+		cpuGenerateUniform(weights, INPUT_WIDTH * OUTPUT_WIDTH, -1.0f, 1.0f);
+		cpuGenerateUniform(initialState, HIDDEN_SIZE, -1.0f, 1.0f);
+	}
+
+	void InitParams()
+	{
+		weights = new float[INPUT_WIDTH * OUTPUT_WIDTH];
+		initialState = new float[HIDDEN_SIZE];
+
+		RandomizeParams();
+	}
 
 	void RandomizeAgentPosition(Agent* a)
 	{
@@ -214,53 +269,12 @@ private:
 			a->isAlive = true;
 			a->endState = false;
 			agentPointers.push_back(a);
-			agentsAlive++;
 		}
 	}
 
 	void KillAgent(Agent* a)
 	{
 		a->isAlive = false;
-		agentsAlive--;
-	}
-
-	void EraseAgents()
-	{
-		for (Agent* a : agentPointers) delete a;
-		agentPointers.clear();
-		agentsAlive = 0;
-	}
-
-	void cpuSgemmStridedBatched(
-		bool transB, bool transA,
-		int CCols, int CRows, int AColsBRows,
-		const float* alpha,
-		float* B, int ColsB, int SizeB,
-		float* A, int ColsA, int SizeA,
-		const float* beta,
-		float* C, int ColsC, int SizeC,
-		int batchCount)
-	{
-		for (int b = batchCount; b--;)
-		{
-			for (int m = CCols; m--;)
-				for (int n = CRows; n--;)
-				{
-					float sum = 0;
-					for (int k = AColsBRows; k--;)
-						sum += (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]);
-					C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
-				}
-			A += SizeA;
-			B += SizeB;
-			C += SizeC;
-		}
-	}
-
-	void cpuGenerateUniform(float* matrix, uint32_t size, float min, float max)
-	{
-		for (uint32_t i = size; i--;)
-			matrix[i] = random(min, max);
 	}
 
 	void GetInput(Agent* agent, float* input)
@@ -316,7 +330,6 @@ private:
 			agent->py += agent->isAlive;
 			break;
 		}
-		agentsAlive -= !agent->isAlive;
 	}
 
 	void KeepTopAgents(float topPercent)
@@ -327,6 +340,24 @@ private:
 		{
 			agentPointers[counter]->endState = true;
 		}
+	}
+
+	void ClearAgents()
+	{
+		for (Agent* a : agentPointers) delete a;
+		agentPointers.clear();
+	}
+
+	void ClearHistory()
+	{
+		for (Moment& m : history) delete& m;
+		history.clear();
+	}
+
+	void ClearParams()
+	{
+		delete[] weights;
+		delete[] initialState;
 	}
 };
 
