@@ -90,12 +90,10 @@ public:
 		while (true)
 		{
 			AddNewAgents(NUM_AGENTS);
-
 			ForwardPropagate();
 			KeepTopAgents(TOP_PERCENT);
 			BackPropagate();
 			ApplyGradients();
-
 			ClearAgents();
 			ClearHistory();
 		}
@@ -111,6 +109,11 @@ private:
 	static constexpr uint32_t INPUT_WIDTH = HIDDEN_SIZE + INPUT_SIZE;
 	static constexpr uint32_t OUTPUT_WIDTH = HIDDEN_SIZE + OUTPUT_SIZE;
 	static constexpr float TOP_PERCENT = 0.4;
+
+	float* initialState;			// each new agent's initial state, stored in GPU memory
+	float* weights;					// weights of the network, stored in GPU memory
+	float* initialStateGradient;	// gradient of the initial state, stored in GPU memory
+	float* weightsGradient;			// gradient of the weights, stored in GPU memory
 	
 	static constexpr float ONE = 1.0f;
 	static constexpr float ZERO = 0.0f;
@@ -121,55 +124,41 @@ private:
 		uint32_t py;			// player y
 		uint32_t gx;			// goal x
 		uint32_t gy;			// goal y
-		float* hiddenState;	// location of hidden state in  memory
-		bool isAlive;			// is agent alive rn, if not, don't bother with it
+		float* hiddenState;		// pointer to the persistent memory of the agent, points to GPU memory
+		bool isAlive;			// is agent alive rn, if not, don't compute its action
 		bool endState;			// bool that holds survivor status for backprop
 	};
 
 	struct Moment
 	{
-		uint32_t agentsAlive;			// number of agents alive in this Moment
-		Agent** agentPointers;			// array of agent pointers
-		float** hiddenStatePointers;	// array of ponters to hidden states in  memory
-		uint32_t* actions;				// matrix of actions represented as integers
+		uint32_t agentsAlive;			// number of agents alive in this moment
+		Agent** agentPointers;			// array of pointers to each agent alive at this moment
+		float** hiddenStatePointers;	// array of pointers to each agent's hidden state, points to GPU memory
+		float* inputs;					// array of each agent's joined hidden state and environment input, stored in GPU memory
+		float* outputs;					// array of each agent's joined new hidden state and action probabilities, stored in GPU memory
+		uint32_t* actions;				// array of each agent's action represented as an index
 
-		float* inputs;	// matrix of inputs in  memory, contains hidden state inputs and inputs
-		float* outputs;	// matrix of outputs in  memory, contains hidden states outputs and outputs
 
 		Moment(uint32_t agentsAlive) : 
 			agentsAlive(agentsAlive),
 			agentPointers(new Agent* [agentsAlive]),
 			hiddenStatePointers(new float* [agentsAlive]),
-			actions(new uint32_t[agentsAlive]),
 			inputs(new float[INPUT_WIDTH * agentsAlive]),
-			outputs(new float[OUTPUT_WIDTH * agentsAlive]) {}
+			outputs(new float[OUTPUT_WIDTH * agentsAlive]),
+			actions(new uint32_t[agentsAlive]) {}
 
 		~Moment()
 		{
 			delete[] agentPointers;
 			delete[] hiddenStatePointers;
-			delete[] actions;
 			delete[] inputs;
 			delete[] outputs;
+			delete[] actions;
 		}
 	};
 
-	float* initialState;	// matrix of initial states in memory
-	float* weights;			// matrix of weights in memory
-	float* initialStateGradient;	// matrix of initial states gradients in memory
-	float* weightsGradient;			// matrix of weights gradients in memory
-
-	vector<Agent*> agentPointers;	// vector that holds all agents in heap memory
-	vector<Moment> history;
-
-	//		temp vars		//
-	uint32_t counter;
-	Agent** agentPointersIterator;
-	float** hiddenStatePointersIterator;
-	float* matrixIterator;
-	float* shiftedMatrixIterator;
-	uint32_t* actionsIterator;
-	//			//			//
+	vector<Agent*> agentPointers;	// vector of pointers to each agent
+	vector<Moment> history;			// vector of moments
 
 	uint32_t AgentsAlive()
 	{
@@ -189,20 +178,20 @@ private:
 	{
 		weights = new float[INPUT_WIDTH * OUTPUT_WIDTH];
 		initialState = new float[HIDDEN_SIZE];
-		
 		weightsGradient = new float[INPUT_WIDTH * OUTPUT_WIDTH];
 		initialStateGradient = new float[HIDDEN_SIZE];
-
 		RandomizeParams();
+		memset(weightsGradient, 0, INPUT_WIDTH * OUTPUT_WIDTH * sizeof(float));
+		memset(initialStateGradient, 0, HIDDEN_SIZE * sizeof(float));
 	}
 
-	void RandomizeAgentPosition(Agent* a)
+	void RandomizeAgentPosition(Agent* a)	// environment func
 	{
 		a->px = random() % BOARD_SIZE;
 		a->py = random() % BOARD_SIZE;
 	}
 
-	void RandomizeAgentGoal(Agent* a)
+	void RandomizeAgentGoal(Agent* a)	// environment func
 	{
 		do
 		{
@@ -211,9 +200,9 @@ private:
 		} while (a->gx == a->px && a->gy == a->py);
 	}
 
-	void AddNewAgents(uint32_t numAgents)
+	void AddNewAgents(uint32_t numAgents)	// idk func
 	{
-		for (counter = numAgents; counter--;)
+		for (uint32_t counter = numAgents; counter--;)
 		{
 			Agent* a = new Agent;
 			RandomizeAgentPosition(a);
@@ -225,10 +214,10 @@ private:
 		}
 	}
 
-	void AddAgentsAliveToMoment(Moment* moment)
+	void AddAgentsAliveToMoment(Moment* moment)	// idk func
 	{
-		agentPointersIterator = moment->agentPointers;
-		hiddenStatePointersIterator = moment->hiddenStatePointers;
+		Agent** agentPointersIterator = moment->agentPointers;
+		float** hiddenStatePointersIterator = moment->hiddenStatePointers;
 		for (Agent* agent : agentPointers)
 		{
 			if (agent->isAlive)
@@ -241,29 +230,31 @@ private:
 		}
 	}
 
-	void GetInput(Agent* agent, float* input)
+	void GetInput(Agent* agent, float* input)	// environment func
 	{
 		memset(input, 0, INPUT_SIZE * sizeof(float));
 		input[agent->px + agent->py * BOARD_SIZE] = -1;
 		input[agent->gx + agent->gy * BOARD_SIZE + INPUT_SIZE] = 1;
 	}
 
-	void InitMomentInputs(Moment* moment)
+	void InitMomentInputs(Moment* moment)	// trainer func
 	{
-		matrixIterator = moment->inputs;
-		shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
-		agentPointersIterator = moment->agentPointers;
-		hiddenStatePointersIterator = moment->hiddenStatePointers;
-		for (counter = moment->agentsAlive; counter--; matrixIterator += INPUT_WIDTH, shiftedMatrixIterator += INPUT_WIDTH)
+		float* matrixIterator = moment->inputs;
+		float* shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
+		Agent** agentPointersIterator = moment->agentPointers;
+		float** hiddenStatePointersIterator = moment->hiddenStatePointers;
+		for (uint32_t counter = moment->agentsAlive; counter--;)
 		{
 			memcpy(matrixIterator, *hiddenStatePointersIterator, HIDDEN_SIZE * sizeof(float));
 			GetInput(*agentPointersIterator, shiftedMatrixIterator);
 			hiddenStatePointersIterator++;
 			agentPointersIterator++;
+			matrixIterator += INPUT_WIDTH;
+			shiftedMatrixIterator += INPUT_WIDTH;
 		}
 	}
 
-	void ForwardPropagateMoment(Moment* moment)
+	void ForwardPropagateMoment(Moment* moment)	// trainer func
 	{
 		cpuSgemmStridedBatched(
 			false, false,
@@ -278,9 +269,8 @@ private:
 		//activation function placeholder
 	}
 
-	void GetAction(float* outputs, uint32_t* action)
+	void GetAction(float* outputs, uint32_t* action)	// trainer func
 	{
-		// softmax
 		float max = outputs[0];
 		for (uint32_t i = 1; i < OUTPUT_SIZE; i++)
 			if (outputs[i] > max) max = outputs[i];
@@ -303,7 +293,7 @@ private:
 		}
 	}
 
-	void Act(Agent* agent, uint32_t* action)
+	void Act(Agent* agent, uint32_t* action)	// environment func
 	{
 		switch (*action)
 		{
@@ -328,15 +318,19 @@ private:
 
 	void ActMomentOutputs(Moment* moment)
 	{
-		matrixIterator = moment->outputs;
-		shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
-		agentPointersIterator = moment->agentPointers;
-		actionsIterator = moment->actions;
-		for (counter = moment->agentsAlive; counter--; agentPointersIterator++, actionsIterator++, matrixIterator += OUTPUT_WIDTH, shiftedMatrixIterator += OUTPUT_WIDTH)
+		float* matrixIterator = moment->outputs;
+		float* shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
+		Agent** agentPointersIterator = moment->agentPointers;
+		uint32_t* actionsIterator = moment->actions;
+		for (uint32_t counter = moment->agentsAlive; counter--;)
 		{
 			(*agentPointersIterator)->hiddenState = matrixIterator;
 			GetAction(shiftedMatrixIterator, actionsIterator);
 			Act(*agentPointersIterator, actionsIterator);
+			agentPointersIterator++;
+			actionsIterator++;
+			matrixIterator += OUTPUT_WIDTH;
+			shiftedMatrixIterator += OUTPUT_WIDTH;
 		}
 	}
 
@@ -359,17 +353,22 @@ private:
 
 	void BackPropagate()
 	{
+		// placeholder for logic
 	}
 
 	void ApplyGradients()
 	{
+		// placeholder for logic
+
+		memset(weightsGradient, 0, INPUT_WIDTH * OUTPUT_WIDTH * sizeof(float));
+		memset(initialStateGradient, 0, HIDDEN_SIZE * sizeof(float));
 	}
 
 	void KeepTopAgents(float topPercent)
 	{
 		sort(agentPointers.begin(), agentPointers.end(), [](Agent* a, Agent* b) { return a->isAlive > b->isAlive; });
 		
-		for (counter = agentPointers.size() * topPercent; counter--;)
+		for (uint32_t counter = agentPointers.size() * topPercent; counter--;)
 		{
 			agentPointers[counter]->endState = true;
 		}
