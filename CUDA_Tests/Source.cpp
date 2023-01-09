@@ -13,6 +13,7 @@ using std::cout;
 using std::vector;
 using std::sort;
 using std::ceil;
+using std::exp;
 
 static struct xorwow32
 {
@@ -68,8 +69,36 @@ const static void cpuSgemmStridedBatched(
 
 const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, float max)
 {
-	for (uint32_t i = size; i--;)
-		matrix[i] = random(min, max);
+	for (uint32_t counter = size; counter--;)
+		matrix[counter] = random(min, max);
+}
+
+const static void cpuClippedLinearUnit(float* inputMatrix, float* outputMatrix, size_t size)
+{
+	float input;
+	for (size_t counter = size; counter--;)
+	{
+		input = inputMatrix[counter] + 1;
+		input = (input > 0) * input - 2;
+		outputMatrix[counter] = (input < 0) * input + 1;
+	}
+}
+
+const static void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
+{
+	float max = inputMatrix[0];
+	for (uint32_t counter = size; counter--;)
+		if (inputMatrix[counter] > max)
+			max = inputMatrix[counter];
+	float sum = 0;
+	for (uint32_t counter = size; counter--;)
+	{
+		outputMatrix[counter] = exp(inputMatrix[counter] - max);
+		sum += outputMatrix[counter];
+	}
+	sum = 1.0f / sum;
+	for (uint32_t counter = size; counter--;)
+		outputMatrix[counter] *= sum;
 }
 
 /*
@@ -121,6 +150,7 @@ private:
 		float** hiddenStatePointers;	// array of pointers to each agent's hidden state, points to GPU memory
 		float* inputs;					// array of each agent's joined hidden state and environment input, stored in GPU memory
 		float* outputs;					// array of each agent's joined new hidden state and action probabilities, stored in GPU memory
+		float* activations;				// array of each agent's activation, stored in GPU memory
 		uint32_t* actions;				// array of each agent's action represented as an index
 
 
@@ -130,28 +160,12 @@ private:
 			hiddenStatePointers(new float* [agentsAlive]),
 			inputs(new float[INPUT_WIDTH * agentsAlive]),
 			outputs(new float[OUTPUT_WIDTH * agentsAlive]),
+			activations(new float[OUTPUT_WIDTH * agentsAlive]),
 			actions(new uint32_t[agentsAlive]) {}
-
-		/*~Moment()	// deconstructor is in ClearHistory() because error otherwise
-		{
-			delete[] agentPointers;
-			delete[] hiddenStatePointers;
-			delete[] inputs;
-			delete[] outputs;
-			delete[] actions;
-		}*/
 	};
 
 	vector<Agent*> agentPointers;	// vector of pointers to each agent
 	vector<Moment> history;			// vector of moments
-
-	uint32_t AgentsAlive()	// idk func, leaning towards enviroment func
-	{
-		uint32_t agentsAlive = 0;
-		for (Agent* agent : agentPointers)
-			agentsAlive += agent->isAlive;
-		return agentsAlive;
-	}
 
 	void RandomizeParams()	// trainer func
 	{
@@ -170,15 +184,23 @@ private:
 		memset(initialStateGradient, 0, HIDDEN_SIZE * sizeof(float));
 	}
 
+	uint32_t AgentsAlive()	// enviroment func
+	{
+		uint32_t agentsAlive = 0;
+		for (Agent* agentPointer : agentPointers)
+			agentsAlive += agentPointer->isAlive;
+		return agentsAlive;
+	}
+
 	bool PlayerOnGoal(Agent* agentPointer)	// environment func
 	{
 		return agentPointer->px == agentPointer->gx && agentPointer->py == agentPointer->gy;
 	}
 
-	void RandomizeAgentPosition(Agent* a)	// environment func
+	void RandomizeAgentPosition(Agent* agentPointer)	// environment func
 	{
-		a->px = random() % BOARD_SIZE;
-		a->py = random() % BOARD_SIZE;
+		agentPointer->px = random() % BOARD_SIZE;
+		agentPointer->py = random() % BOARD_SIZE;
 	}
 
 	void RandomizeAgentGoal(Agent* agentPointer)	// environment func
@@ -190,7 +212,7 @@ private:
 		} while (PlayerOnGoal(agentPointer));
 	}
 
-	void AddNewAgents(uint32_t numAgents)	// idk func, leaning towards environment
+	void AddNewAgents(uint32_t numAgents)	// environment func
 	{
 		for (uint32_t counter = numAgents; counter--;)
 		{
@@ -205,7 +227,7 @@ private:
 		}
 	}
 
-	void AddAgentsAliveToMoment(Moment* moment)	// idk func, leaning towards environment
+	void AddAgentsAliveToMoment(Moment* moment)	// environment func
 	{
 		Agent** agentPointersIterator = moment->agentPointers;
 		float** hiddenStatePointersIterator = moment->hiddenStatePointers;
@@ -257,22 +279,24 @@ private:
 			moment->outputs, OUTPUT_WIDTH, ZERO,
 			1);
 
-		//activation function placeholder
+		float* matrixIterator = moment->outputs;
+		float* shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
+		float* activationsIterator = moment->activations;
+		float* shiftedActivationsIterator = activationsIterator + HIDDEN_SIZE;
+		for (uint32_t counter = moment->agentsAlive; counter--;)
+		{
+			cpuClippedLinearUnit(matrixIterator, activationsIterator, HIDDEN_SIZE);
+			cpuSoftmax(shiftedMatrixIterator, shiftedActivationsIterator, OUTPUT_SIZE);
+			matrixIterator += OUTPUT_WIDTH;
+			shiftedMatrixIterator += OUTPUT_WIDTH;
+			activationsIterator += OUTPUT_WIDTH;
+			shiftedActivationsIterator += OUTPUT_WIDTH;
+		}
 	}
 
 	void GetAction(float* outputs, uint32_t* action)	// trainer func
 	{
-		float max = outputs[0];
-		for (uint32_t i = 1; i < OUTPUT_SIZE; i++)
-			if (outputs[i] > max) max = outputs[i];
-		float sum = 0;
-		for (uint32_t i = OUTPUT_SIZE; i--;)
-		{
-			outputs[i] = exp(outputs[i] - max);
-			sum += outputs[i];
-		}
-
-		float r = random(0, sum);
+		float r = random(0, 1);
 		for (uint32_t i = 0; i < OUTPUT_SIZE; i++)
 		{
 			r -= outputs[i];
@@ -325,20 +349,20 @@ private:
 
 	void ActMomentOutputs(Moment* moment)	// idk func, leaning towards environment func
 	{
-		float* matrixIterator = moment->outputs;
-		float* shiftedMatrixIterator = matrixIterator + HIDDEN_SIZE;
+		float* activationsIterator = moment->activations;
+		float* shiftedActivationsIterator = activationsIterator + HIDDEN_SIZE;
 		Agent** agentPointersIterator = moment->agentPointers;
 		uint32_t* actionsIterator = moment->actions;
 		for (uint32_t counter = moment->agentsAlive; counter--;)
 		{
-			(*agentPointersIterator)->hiddenState = matrixIterator;
-			GetAction(shiftedMatrixIterator, actionsIterator);
+			(*agentPointersIterator)->hiddenState = activationsIterator;
+			GetAction(shiftedActivationsIterator, actionsIterator);
 			AgentAct(*agentPointersIterator, actionsIterator);
 			EnvironmentAct(*agentPointersIterator);
+			activationsIterator += OUTPUT_WIDTH;
+			shiftedActivationsIterator += OUTPUT_WIDTH;
 			agentPointersIterator++;
 			actionsIterator++;
-			matrixIterator += OUTPUT_WIDTH;
-			shiftedMatrixIterator += OUTPUT_WIDTH;
 		}
 	}
 
@@ -348,14 +372,11 @@ private:
 		uint32_t agentsAlive;
 		while ((agentsAlive = AgentsAlive()) && numMoments--)
 		{
-			PrintAgentsInfo();
 			Moment moment(agentsAlive);
-
 			AddAgentsAliveToMoment(&moment);
 			InitMomentInputs(&moment);
 			ForwardPropagateMoment(&moment);
 			ActMomentOutputs(&moment);
-			PrintMomentInfo(&moment);
 			history.push_back(moment);
 		};
 	}
@@ -365,7 +386,6 @@ private:
 		sort(agentPointers.begin(), agentPointers.end(), [](Agent* a, Agent* b) { return a->score > b->score; });
 		for (uint32_t counter = ceil(agentPointers.size() * topPercent); counter--;)
 			agentPointers[counter]->endState = true;
-		PrintAgentsInfo();
 	}
 
 	void BackPropagate()	//idk func, leaning towards trainer func
@@ -395,6 +415,7 @@ private:
 			delete[] m.hiddenStatePointers;
 			delete[] m.inputs;
 			delete[] m.outputs;
+			delete[] m.activations;
 			delete[] m.actions;
 		}
 		history.clear();
@@ -458,62 +479,103 @@ public:
 		cout << '\n';
 	}
 
-	void PrintMomentInfo(Moment* moment)
+	void PrintHistoryInfo()
 	{
-		cout << "There are " << moment->agentsAlive << " agents alive at this moment.\n\n";
-		for (uint32_t i = 0; i < moment->agentsAlive; i++)
+		cout << "There are " << history.size() << " total moments.\n\n";
+		for (Moment& moment : history)
 		{
-			cout << "Agent " << moment->agentPointers[i] << "\n";
-			cout << "Player Position: " << moment->agentPointers[i]->px << ", " << moment->agentPointers[i]->py << '\n';
-			cout << "Goal Position: " << moment->agentPointers[i]->gx << ", " << moment->agentPointers[i]->gy << '\n';
-			cout << "Score: " << moment->agentPointers[i]->score << '\n';
-			cout << "Hidden State: ";
-			for (uint32_t j = 0; j < HIDDEN_SIZE; j++)
-				cout << moment->hiddenStatePointers[i][j] << ' ';
-			cout << '\n';
-			cout << "Agent is " << (moment->agentPointers[i]->isAlive ? "alive" : "dead") << '\n';
-			cout << "Agent is " << (moment->agentPointers[i]->endState ? "a survivor" : "not a survivor") << '\n';
-			cout << '\n';
-		}
-		cout << "Inputs:\n";
-		for (uint32_t i = 0; i < moment->agentsAlive; i++)
-		{
-			for (uint32_t j = 0; j < INPUT_WIDTH; j++)
-				cout << moment->inputs[i * INPUT_WIDTH + j] << ' ';
-			cout << '\n';
-		}
-		cout << '\n';
-		cout << "Outputs:\n";
-		for (uint32_t i = 0; i < moment->agentsAlive; i++)
-		{
-			for (uint32_t j = 0; j < OUTPUT_WIDTH; j++)
-				cout << moment->outputs[i * OUTPUT_WIDTH + j] << ' ';
-			cout << '\n';
-		}
-		cout << '\n';
-		cout << "Actions:\n";
-		for (uint32_t i = 0; i < moment->agentsAlive; i++)
-		{
-			switch (moment->actions[i])
+			cout << "There are " << moment.agentsAlive << " agents alive at this moment.\n\n";
+			for (uint32_t i = 0; i < moment.agentsAlive; i++)
 			{
-			case 0:
-				cout << "Left\n";
-				break;
-			case 1:
-				cout << "Right\n";
-				break;
-			case 2:
-				cout << "Up\n";
-				break;
-			case 3:
-				cout << "Down\n";
-				break;
-			case 4:
-				cout << "Stay\n";
-				break;
+				cout << "Agent " << moment.agentPointers[i] << "\n";
+				cout << "Player Position: " << moment.agentPointers[i]->px << ", " << moment.agentPointers[i]->py << '\n';
+				cout << "Goal Position: " << moment.agentPointers[i]->gx << ", " << moment.agentPointers[i]->gy << '\n';
+				cout << "Score: " << moment.agentPointers[i]->score << '\n';
+				cout << "Hidden State: ";
+				for (uint32_t j = 0; j < HIDDEN_SIZE; j++)
+					cout << moment.hiddenStatePointers[i][j] << ' ';
+				cout << '\n';
+				cout << "Agent is " << (moment.agentPointers[i]->isAlive ? "alive" : "dead") << '\n';
+				cout << "Agent is " << (moment.agentPointers[i]->endState ? "a survivor" : "not a survivor") << '\n';
+				cout << '\n';
 			}
+			
+			enum { DETAILED = true, BASIC = false };
+			if (BASIC)
+			{
+				cout << "Inputs:\n";
+				for (uint32_t i = 0; i < moment.agentsAlive; i++)
+				{
+					for (uint32_t j = 0; j < INPUT_WIDTH; j++)
+						cout << moment.inputs[i * INPUT_WIDTH + j] << ' ';
+					cout << '\n';
+				}
+				cout << '\n';
+				cout << "Outputs:\n";
+				for (uint32_t i = 0; i < moment.agentsAlive; i++)
+				{
+					for (uint32_t j = 0; j < OUTPUT_WIDTH; j++)
+						cout << moment.outputs[i * OUTPUT_WIDTH + j] << ' ';
+					cout << '\n';
+				}
+				cout << '\n';
+				cout << "Activations:\n";
+				for (uint32_t i = 0; i < moment.agentsAlive; i++)
+				{
+					for (uint32_t j = 0; j < OUTPUT_WIDTH; j++)
+						cout << moment.activations[i * OUTPUT_WIDTH + j] << ' ';
+					cout << '\n';
+				}
+				cout << '\n';
+			}
+			else
+			{
+				cout << "Inputs:\n";
+				for (uint32_t i = 0; i < moment.agentsAlive; i++)
+				{
+					for (uint32_t j = 0; j < BOARD_SIZE; j++)
+					{
+						for (uint32_t k = 0; k < BOARD_SIZE; k++)
+							cout << moment.inputs[i * INPUT_WIDTH + HIDDEN_SIZE + j * BOARD_SIZE + k] << ' ';
+						cout << '\n';
+					}
+					cout << '\n';
+				}
+				cout << '\n';
+				cout << "Outputs:\n";
+				for (uint32_t i = 0; i < moment.agentsAlive; i++)
+				{
+					for (uint32_t j = 0; j < OUTPUT_SIZE; j++)
+						cout << moment.activations[i * OUTPUT_WIDTH + HIDDEN_SIZE + j] << ' ';
+					cout << '\n';
+				}
+				cout << '\n';
+			}
+			cout << "Actions:\n";
+			for (uint32_t i = 0; i < moment.agentsAlive; i++)
+			{
+				cout << "Agent " << moment.agentPointers[i] << " moved ";
+				switch (moment.actions[i])
+				{
+				case 0:
+					cout << "Left\n";
+					break;
+				case 1:
+					cout << "Right\n";
+					break;
+				case 2:
+					cout << "Up\n";
+					break;
+				case 3:
+					cout << "Down\n";
+					break;
+				case 4:
+					cout << "Stay\n";
+					break;
+				}
+			}
+			cout << "\n\n";
 		}
-		cout << "\n\n";
 	}
 
 	void Run()
@@ -523,12 +585,13 @@ public:
 		{*/
 			AddNewAgents(NUM_AGENTS);
 			ForwardPropagate();
+			PrintHistoryInfo();
 			KeepTopAgents(TOP_PERCENT);
+			PrintAgentsInfo();
 			/*BackPropagate();
 			ApplyGradients();*/
 			ClearAgents();
-			PrintAgentsInfo();
-			/*ClearHistory();*/
+			ClearHistory();
 		/*}*/
 	}
 
