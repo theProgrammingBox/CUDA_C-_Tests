@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <algorithm>
+#include <math.h>
 
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
@@ -11,6 +12,7 @@ using std::chrono::nanoseconds;
 using std::cout;
 using std::vector;
 using std::sort;
+using std::ceil;
 
 static struct xorwow32
 {
@@ -76,12 +78,13 @@ TODO:
 2. Add back propagate
 3. Add apply gradient
 4. Seperate Trainer and Enviroment class
+5. Transition to GPU memory
 */
 
 class Environment
 {
 private:
-	static constexpr uint32_t NUM_AGENTS = 1;
+	static constexpr uint32_t NUM_AGENTS = 2;
 	static constexpr uint32_t HIDDEN_SIZE = 8;
 	static constexpr uint32_t BOARD_SIZE = 3;
 	static constexpr uint32_t INPUT_SIZE = BOARD_SIZE * BOARD_SIZE;
@@ -105,9 +108,10 @@ private:
 		uint32_t py;			// player y
 		uint32_t gx;			// goal x
 		uint32_t gy;			// goal y
+		uint32_t score;			// score
 		float* hiddenState;		// pointer to the persistent memory of the agent, points to GPU memory
 		bool isAlive;			// is agent alive rn, if not, don't compute its action
-		bool endState;			// bool that holds survivor status for backprop
+		bool endState;			// bool that holds survivor status, set after full episode
 	};
 
 	struct Moment
@@ -166,32 +170,38 @@ private:
 		memset(initialStateGradient, 0, HIDDEN_SIZE * sizeof(float));
 	}
 
+	bool PlayerOnGoal(Agent* agentPointer)	// environment func
+	{
+		return agentPointer->px == agentPointer->gx && agentPointer->py == agentPointer->gy;
+	}
+
 	void RandomizeAgentPosition(Agent* a)	// environment func
 	{
 		a->px = random() % BOARD_SIZE;
 		a->py = random() % BOARD_SIZE;
 	}
 
-	void RandomizeAgentGoal(Agent* a)	// environment func
+	void RandomizeAgentGoal(Agent* agentPointer)	// environment func
 	{
 		do
 		{
-			a->gx = random() % BOARD_SIZE;
-			a->gy = random() % BOARD_SIZE;
-		} while (a->gx == a->px && a->gy == a->py);
+			agentPointer->gx = random() % BOARD_SIZE;
+			agentPointer->gy = random() % BOARD_SIZE;
+		} while (PlayerOnGoal(agentPointer));
 	}
 
 	void AddNewAgents(uint32_t numAgents)	// idk func, leaning towards environment
 	{
 		for (uint32_t counter = numAgents; counter--;)
 		{
-			Agent* a = new Agent;
-			RandomizeAgentPosition(a);
-			RandomizeAgentGoal(a);
-			a->hiddenState = initialState;
-			a->isAlive = true;
-			a->endState = false;
-			agentPointers.push_back(a);
+			Agent* agentPointer = new Agent;
+			RandomizeAgentPosition(agentPointer);
+			RandomizeAgentGoal(agentPointer);
+			agentPointer->score = 0;
+			agentPointer->hiddenState = initialState;
+			agentPointer->isAlive = true;
+			agentPointer->endState = false;
+			agentPointers.push_back(agentPointer);
 		}
 	}
 
@@ -215,7 +225,7 @@ private:
 	{
 		memset(input, 0, INPUT_SIZE * sizeof(float));
 		input[agent->px + agent->py * BOARD_SIZE] = -1;
-		input[agent->gx + agent->gy * BOARD_SIZE + INPUT_SIZE] = 1;
+		input[agent->gx + agent->gy * BOARD_SIZE] = 1;
 	}
 
 	void InitMomentInputs(Moment* moment)	// trainer func
@@ -245,7 +255,7 @@ private:
 			moment->inputs, INPUT_WIDTH, ZERO,
 			&ZERO,
 			moment->outputs, OUTPUT_WIDTH, ZERO,
-			0);
+			1);
 
 		//activation function placeholder
 	}
@@ -274,29 +284,42 @@ private:
 		}
 	}
 
-	void Act(Agent* agent, uint32_t* action)	// environment func
+	void AgentAct(Agent* agent, uint32_t* action)	// environment func
 	{
 		switch (*action)
 		{
 		case 0:
 			agent->isAlive = agent->px > 0;
 			agent->px -= agent->isAlive;
+			//cout << "left\n";
 			break;
 		case 1:
 			agent->isAlive = agent->px < BOARD_SIZE - 1;
 			agent->px += agent->isAlive;
+			//cout << "right\n";
 			break;
 		case 2:
 			agent->isAlive = agent->py > 0;
 			agent->py -= agent->isAlive;
+			//cout << "up\n";
 			break;
 		case 3:
 			agent->isAlive = agent->py < BOARD_SIZE - 1;
 			agent->py += agent->isAlive;
+			//cout << "down\n";
 			break;
 		case 4:
-			// no move
+			//cout << "stay\n";
 			break;
+		}
+	}
+
+	void EnvironmentAct(Agent* agentPointer)	// environment func
+	{
+		if (PlayerOnGoal(agentPointer))
+		{
+			agentPointer->score++;
+			RandomizeAgentGoal(agentPointer);
 		}
 	}
 
@@ -310,7 +333,8 @@ private:
 		{
 			(*agentPointersIterator)->hiddenState = matrixIterator;
 			GetAction(shiftedMatrixIterator, actionsIterator);
-			Act(*agentPointersIterator, actionsIterator);
+			AgentAct(*agentPointersIterator, actionsIterator);
+			EnvironmentAct(*agentPointersIterator);
 			agentPointersIterator++;
 			actionsIterator++;
 			matrixIterator += OUTPUT_WIDTH;
@@ -328,12 +352,20 @@ private:
 			Moment moment(agentsAlive);
 
 			AddAgentsAliveToMoment(&moment);
-			PrintMomentInfo(&moment);
-			/*InitMomentInputs(&moment);
+			InitMomentInputs(&moment);
 			ForwardPropagateMoment(&moment);
-			ActMomentOutputs(&moment);*/
+			ActMomentOutputs(&moment);
+			PrintMomentInfo(&moment);
 			history.push_back(moment);
 		};
+	}
+
+	void KeepTopAgents(float topPercent)	// idk func, leaning towards environment func
+	{
+		sort(agentPointers.begin(), agentPointers.end(), [](Agent* a, Agent* b) { return a->score > b->score; });
+		for (uint32_t counter = ceil(agentPointers.size() * topPercent); counter--;)
+			agentPointers[counter]->endState = true;
+		PrintAgentsInfo();
 	}
 
 	void BackPropagate()	//idk func, leaning towards trainer func
@@ -347,16 +379,6 @@ private:
 
 		memset(weightsGradient, 0, INPUT_WIDTH * OUTPUT_WIDTH * sizeof(float));
 		memset(initialStateGradient, 0, HIDDEN_SIZE * sizeof(float));
-	}
-
-	void KeepTopAgents(float topPercent)	// idk func, leaning towards environment func
-	{
-		sort(agentPointers.begin(), agentPointers.end(), [](Agent* a, Agent* b) { return a->isAlive > b->isAlive; });
-
-		for (uint32_t counter = agentPointers.size() * topPercent; counter--;)
-		{
-			agentPointers[counter]->endState = true;
-		}
 	}
 
 	void ClearAgents()	// idk func, leaning towards environment func
@@ -399,77 +421,99 @@ public:
 		ClearParams();
 	}
 
-	void PrintAgentsInfo()
-	{
-		cout << "There are " << agentPointers.size() << " agents alive.\n\n";
-		for (Agent* agentPointer : agentPointers)
-		{
-			cout << "Player Position: " << agentPointer->px << ", " << agentPointer->py << '\n';
-			cout << "Goal Position: " << agentPointer->gx << ", " << agentPointer->gy << '\n';
-			cout << "Hidden State: ";
-			for (uint32_t i = 0; i < HIDDEN_SIZE; i++)
-			{
-				cout << agentPointer->hiddenState[i] << ' ';
-			}
-			cout << '\n';
-			cout << "Agent is " << (agentPointer->isAlive ? "alive" : "dead") << '\n';
-			cout << "Agent is " << (agentPointer->endState ? "a survivor" : "not a survivor") << '\n';
-			cout << '\n';
-		}
-	}
-
 	void PrintParamsInfo()
 	{
 		cout << "Weights:\n";
 		for (uint32_t i = 0; i < INPUT_WIDTH; i++)
 		{
 			for (uint32_t j = 0; j < OUTPUT_WIDTH; j++)
-			{
 				cout << weights[i * OUTPUT_WIDTH + j] << ' ';
-			}
 			cout << '\n';
 		}
 		cout << '\n';
 
 		cout << "Initial State:\n";
 		for (uint32_t i = 0; i < HIDDEN_SIZE; i++)
-		{
 			cout << initialState[i] << ' ';
+		cout << "\n\n\n";
+	}
+
+	void PrintAgentsInfo()
+	{
+		cout << "There are " << agentPointers.size() << " total agents.\n\n";
+		for (Agent* agentPointer : agentPointers)
+		{
+			cout << "Agent " << agentPointer << "\n";
+			cout << "Player Position: " << agentPointer->px << ", " << agentPointer->py << '\n';
+			cout << "Goal Position: " << agentPointer->gx << ", " << agentPointer->gy << '\n';
+			cout << "Score: " << agentPointer->score << '\n';
+			cout << "Hidden State: ";
+			for (uint32_t i = 0; i < HIDDEN_SIZE; i++)
+				cout << agentPointer->hiddenState[i] << ' ';
+			cout << '\n';
+			cout << "Agent is " << (agentPointer->isAlive ? "alive" : "dead") << '\n';
+			cout << "Agent is " << (agentPointer->endState ? "a survivor" : "not a survivor") << '\n';
+			cout << '\n';
 		}
-		cout << "\n\n";
+		cout << '\n';
 	}
 
 	void PrintMomentInfo(Moment* moment)
 	{
 		cout << "There are " << moment->agentsAlive << " agents alive at this moment.\n\n";
-		/*cout << "Moment Inputs:\n";
+		for (uint32_t i = 0; i < moment->agentsAlive; i++)
+		{
+			cout << "Agent " << moment->agentPointers[i] << "\n";
+			cout << "Player Position: " << moment->agentPointers[i]->px << ", " << moment->agentPointers[i]->py << '\n';
+			cout << "Goal Position: " << moment->agentPointers[i]->gx << ", " << moment->agentPointers[i]->gy << '\n';
+			cout << "Score: " << moment->agentPointers[i]->score << '\n';
+			cout << "Hidden State: ";
+			for (uint32_t j = 0; j < HIDDEN_SIZE; j++)
+				cout << moment->hiddenStatePointers[i][j] << ' ';
+			cout << '\n';
+			cout << "Agent is " << (moment->agentPointers[i]->isAlive ? "alive" : "dead") << '\n';
+			cout << "Agent is " << (moment->agentPointers[i]->endState ? "a survivor" : "not a survivor") << '\n';
+			cout << '\n';
+		}
+		cout << "Inputs:\n";
 		for (uint32_t i = 0; i < moment->agentsAlive; i++)
 		{
 			for (uint32_t j = 0; j < INPUT_WIDTH; j++)
-			{
 				cout << moment->inputs[i * INPUT_WIDTH + j] << ' ';
-			}
 			cout << '\n';
 		}
 		cout << '\n';
-
-		cout << "Moment Outputs:\n";
+		cout << "Outputs:\n";
 		for (uint32_t i = 0; i < moment->agentsAlive; i++)
 		{
 			for (uint32_t j = 0; j < OUTPUT_WIDTH; j++)
-			{
 				cout << moment->outputs[i * OUTPUT_WIDTH + j] << ' ';
-			}
 			cout << '\n';
 		}
 		cout << '\n';
-
-		cout << "Moment Actions:\n";
+		cout << "Actions:\n";
 		for (uint32_t i = 0; i < moment->agentsAlive; i++)
 		{
-			cout << moment->actions[i] << ' ';
+			switch (moment->actions[i])
+			{
+			case 0:
+				cout << "Left\n";
+				break;
+			case 1:
+				cout << "Right\n";
+				break;
+			case 2:
+				cout << "Up\n";
+				break;
+			case 3:
+				cout << "Down\n";
+				break;
+			case 4:
+				cout << "Stay\n";
+				break;
+			}
 		}
-		cout << '\n';*/
+		cout << "\n\n";
 	}
 
 	void Run()
@@ -479,8 +523,8 @@ public:
 		{*/
 			AddNewAgents(NUM_AGENTS);
 			ForwardPropagate();
-			/*KeepTopAgents(TOP_PERCENT);
-			BackPropagate();
+			KeepTopAgents(TOP_PERCENT);
+			/*BackPropagate();
 			ApplyGradients();*/
 			ClearAgents();
 			PrintAgentsInfo();
