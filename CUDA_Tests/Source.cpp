@@ -122,63 +122,69 @@ const static void cpuSoftmaxGradient(float* outputMatrix, float* gradient, uint3
 }
 
 int main() {
-	const uint32_t N = 3;
+	constexpr uint32_t N = 3;
+	constexpr uint32_t ITERATIONS = 1000;
+	constexpr float LEARNING_RATE = 0.1f;
 	
-	float goal[N] = {};
-	float bias[N] = {};
-	float res[N] = {};
-	float grad[N] = {};
+	float goal[N] = {};	// target probabilities
+	float bias[N] = {};	// bias that is converted to probabilities
+	float res[N] = {};	// resulting probabilities after softmax bias
+	float grad[N] = {};	// gradient of the loss function
+	uint32_t sample = 0;// sampled index from the probability distribution
+	float gradient;		// whether the sampled index should be increased or decreased
 
 	cpuGenerateUniform(bias, N, -1, 1);
-	cpuSoftmax(bias, goal, N);
-	memset(bias, 0, N * sizeof(float));
+	cpuSoftmax(bias, goal, N);	// generate random target probabilities
 
-	int iter = 100;
+	cpuGenerateUniform(bias, N, -1, 1);	// generate random bias
+
+	int iter = ITERATIONS;
 	while (iter--)
 	{
+		// calculate probabilities from bias
 		cpuSoftmax(bias, res, N);
 		
-		/*cout << "Bias: ";
-		for (int i = 0; i < N; i++)
-			cout << bias[i] << " ";
-		cout << "\n";*/
-		
-		cout << "Res: ";
-		for (int i = 0; i < N; i++)
-			cout << res[i] << " ";
-		cout << "\n";
-		
+		// Sample from the distribution
 		float randNum = random(0, 1);
-		float sum = 0;
-		uint32_t sample;
 		for (int i = 0; i < N; i++)
 		{
-			sum += res[i];
-			if (randNum < sum)
+			randNum -= res[i];
+			if (randNum <= 0)
 			{
 				sample = i;
 				break;
 			}
 		}
-		//cout << "Sample: " << sample << "\n";
-
-		memset(grad, 0, N * sizeof(float));
-		float gradient = res[sample] > goal[sample] ? -1 : 1;
 		
+		// should the sampled index be increased or decreased
+		gradient = res[sample] > goal[sample] ? -LEARNING_RATE : LEARNING_RATE;
+		
+		// calculate gradient of the loss function
 		cpuSoftmaxGradient(res, &gradient, &sample, grad, N);
-		/*cout << "Grad: ";
-		for (int i = 0; i < N; i++)
-			cout << grad[i] << " ";
-		cout << "\n";*/
 		
-		float alpha = 0.1f;
+		// update bias
 		for (int i = 0; i < N; i++)
-			bias[i] += alpha * grad[i];
+			bias[i] += grad[i];
 	}
 	
 	cout << "Goal: ";
 	for (int i = 0; i < N; i++)
 		cout << goal[i] << " ";
+	cout << "\n";
+
+	cout << "Res: ";
+	for (int i = 0; i < N; i++)
+		cout << res[i] << " ";
+	cout << "\n";
+
+	cout << "Error: ";
+	for (int i = 0; i < N; i++)
+		cout << abs(goal[i] - res[i]) << " ";
+	cout << "\n";
+
+	cout << "Bias: ";
+	for (int i = 0; i < N; i++)
+		cout << bias[i] << " ";
 	cout << "\n";
 
 	return 0;
