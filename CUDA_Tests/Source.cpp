@@ -15,6 +15,25 @@ using std::sort;
 using std::ceil;
 using std::exp;
 
+/*
+What I learned from this:
+1. Only having one agent facing itself will lead to an convergence based on its own actions.
+Based on the kind of environment, the final probability may not accurately represent the nash equilibrium of a diverse population.
+
+2. Having more agents will lead to a more accurate representation of the nash equilibrium or a close approximation.
+This is because the agents will be able to evolve from each other's actions, which allows the agents to learn from different "personalities"
+The algorithm of match making is very important because it will determine who the agents will face and evolve from.
+This can often lead to local behavior, like a fish evolving in a pond next to an ocean.
+
+3. The number of agents you choose to "survive" is also very important.
+This factor is ultimately a constraint that can effect the average nash equilibrium of the agents.
+This may be because although many agents have the same ranking, the number of agents that survive is limited, leading to a the same actions leading to different results.
+
+
+Things I want to try out:
+1. Use a constant for softmax gradient instead of the actual computed gradient.
+*/
+
 static struct xorwow32
 {
 	uint32_t state[6];
@@ -62,16 +81,28 @@ const static void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t s
 
 const static void cpuSoftmaxGradient(float* outputMatrix, float* gradient, uint32_t* sample, float* resultMatrix, uint32_t size)
 {
-	float sampleValue = outputMatrix[*sample];
+	/*float sampleValue = outputMatrix[*sample];
 	for (uint32_t counter = size; counter--;)
-		resultMatrix[counter] = sampleValue * *gradient * ((counter == *sample) - outputMatrix[counter]);
+		resultMatrix[counter] = sampleValue * *gradient * ((counter == *sample) - outputMatrix[counter]);*/
+	float win[2] = { -1, -1 };
+	float loss[2] = { 1, 1 };
+	if (*gradient > 0)
+	{
+		memcpy(resultMatrix, win, size * sizeof(float));
+		resultMatrix[*sample] = 1;
+	}
+	else
+	{
+		memcpy(resultMatrix, loss, size * sizeof(float));
+		resultMatrix[*sample] = -1;
+	}
 }
 
 int main() {
-	constexpr uint32_t AGENTS = 128;
+	constexpr uint32_t AGENTS = 32;
 	constexpr uint32_t ACTIONS = 2;
-	constexpr uint32_t ITERATIONS = 10000;
-	constexpr float LEARNING_RATE = 0.1f;
+	constexpr uint32_t ITERATIONS = 1000000;
+	constexpr float LEARNING_RATE = 0.001f;
 	constexpr float TOP_PERCENT = 0.2f;
 
 	// Prisoner's Dilemma, score is time in prison
@@ -98,7 +129,6 @@ int main() {
 	uint32_t iteration = ITERATIONS;
 	while (iteration--)
 	{
-
 		for (Agent& agent : agents)
 		{
 			// calculate the probability distribution
@@ -117,6 +147,16 @@ int main() {
 			}
 		}
 
+		// randomize the order of the agents
+		for (uint32_t counter = AGENTS; counter--;)
+		{
+			uint32_t index = random() % AGENTS;
+			uint32_t index2 = random() % AGENTS;
+			Agent temp = agents[index];
+			agents[index] = agents[index2];
+			agents[index2] = temp;
+		}
+		
 		// face each other
 		for (uint32_t counter = 0; counter < AGENTS; counter += 2)
 		{
@@ -130,17 +170,16 @@ int main() {
 		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });
 		
 		// set the top agents to have a positive gradient and the bottom agents to have a negative gradient
-		for (uint32_t counter = 0; counter < AGENTS; counter++)
-			agents[counter].actionGradient = (counter < ceil(AGENTS* TOP_PERCENT)) ? 1 : -1;
+		for (uint32_t counter = AGENTS; counter--;)
+			agents[counter].actionGradient = (counter < ceil(AGENTS * TOP_PERCENT)) ? 1 : -1;
 
-		// calculate the gradient for each agent
+		// calculate and apply the gradient for each agent
 		for (Agent& agent : agents)
+		{
 			cpuSoftmaxGradient(agent.probabilities, &agent.actionGradient, &agent.sample, agent.gradient, ACTIONS);
-		
-		// update the bias state
-		for (Agent& agent : agents)
 			for (uint32_t counter = ACTIONS; counter--;)
 				agent.bias[counter] += LEARNING_RATE * agent.gradient[counter];
+		}
 	}
 
 	// print the final probability distribution
