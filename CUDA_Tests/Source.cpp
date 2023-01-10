@@ -82,34 +82,33 @@ int main() {
 
 	struct Agent
 	{
-		uint32_t sample;			// the sampled action from the softmax
-		float actionGradient;		// whether the action was good or bad
-		float score;				// the score of the action
-		float gradient[ACTIONS];	// the gradient of the action
+		float bias[ACTIONS];			// the bias state to be used in the softmax
+		float probabilities[ACTIONS];	// the result of the softmax
+		uint32_t sample;				// the sampled action from the softmax
+		float actionGradient;			// whether the action was good or bad
+		float score;					// the score of the action
+		float gradient[ACTIONS];		// the gradient of the action
+
+		Agent() { memset(bias, 0, sizeof(bias)); }	// set initial bias state to 0 for equal probability
 	};
 
 	vector<Agent> agents(AGENTS);	// the agents
-	
 	float randomNum;				// random number used to sample from the probability distribution
-	float bias[ACTIONS];			// the bias state to be used in the softmax
-	float probabilities[ACTIONS];	// the result of the softmax
 	
-	memset(bias, 0, sizeof(bias));	// set initial bias state to 0 for equal probability
-
 	uint32_t iteration = ITERATIONS;
 	while (iteration--)
 	{
-		// calculate the probability distribution
-		cpuSoftmax(bias, probabilities, ACTIONS);
 
 		for (Agent& agent : agents)
 		{
+			// calculate the probability distribution
+			cpuSoftmax(agent.bias, agent.probabilities, ACTIONS);
 
 			// sample the action
 			randomNum = random(0, 1);
 			for (uint32_t counter = ACTIONS; counter--;)
 			{
-				randomNum -= probabilities[counter];
+				randomNum -= agent.probabilities[counter];
 				if (randomNum <= 0)
 				{
 					agent.sample = counter;
@@ -136,19 +135,20 @@ int main() {
 
 		// calculate the gradient for each agent
 		for (Agent& agent : agents)
-			cpuSoftmaxGradient(probabilities, &agent.actionGradient, &agent.sample, agent.gradient, ACTIONS);
+			cpuSoftmaxGradient(agent.probabilities, &agent.actionGradient, &agent.sample, agent.gradient, ACTIONS);
 		
 		// update the bias state
 		for (Agent& agent : agents)
 			for (uint32_t counter = ACTIONS; counter--;)
-				bias[counter] += LEARNING_RATE * agent.gradient[counter];
+				agent.bias[counter] += LEARNING_RATE * agent.gradient[counter];
 	}
 
 	// print the final probability distribution
-	cout << "Probabilities: ";
-	for (uint32_t counter = 0; counter < ACTIONS; counter++)
-		cout << probabilities[counter] << " ";
-	cout << '\n';
+	for (Agent& agent : agents)
+	{
+		cpuSoftmax(agent.bias, agent.probabilities, ACTIONS);
+		cout << agent.probabilities[0] << " " << agent.probabilities[1] << "\n";
+	}
 
 	return 0;
 }
