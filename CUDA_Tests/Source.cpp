@@ -49,14 +49,10 @@ const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, fl
 
 const static void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
 {
-	float max = inputMatrix[0];
-	for (uint32_t counter = size; counter--;)
-		if (inputMatrix[counter] > max)
-			max = inputMatrix[counter];
 	float sum = 0;
 	for (uint32_t counter = size; counter--;)
 	{
-		outputMatrix[counter] = exp(inputMatrix[counter] - max);
+		outputMatrix[counter] = exp(inputMatrix[counter]);
 		sum += outputMatrix[counter];
 	}
 	sum = 1.0f / sum;
@@ -72,129 +68,87 @@ const static void cpuSoftmaxGradient(float* outputMatrix, float* gradient, uint3
 }
 
 int main() {
-	constexpr uint32_t N = 2;
-	constexpr uint32_t ITERATIONS = 100000;
+	constexpr uint32_t AGENTS = 128;
+	constexpr uint32_t ACTIONS = 2;
+	constexpr uint32_t ITERATIONS = 10000;
 	constexpr float LEARNING_RATE = 0.1f;
+	constexpr float TOP_PERCENT = 0.2f;
 
 	// Prisoner's Dilemma, score is time in prison
-	float score[N * N] = {
-		5, 10,	// (Snitch1 & Snitch2) | (Silent1 & Snitch2)
-		0, 1	// (Snitch1 & Silent2) | (Silent1 & Silent2)
+	float score[ACTIONS * ACTIONS] = {
+		2, 3,	// (Snitch1 & Snitch2) | (Silent1 & Snitch2)
+		1, 0	// (Snitch1 & Silent2) | (Silent1 & Silent2)
 	};
 
-	enum Personality {
-		MALICIOUS = 0,		// always tries to force the other player's time in prison to be greater than their own
-		LOVER = 1,			// always tries to force the other player's time in prison to be less than their own
-		COOPERATIVE = 2,	// always tries to minimize their own time in prison
-		SUISIDAL = 3,		// always tries to maximize their own time in prison
-	};
-	
-	uint32_t sample1 = 0;	// player 1's sampled index from the probability distribution
-	uint32_t sample2 = 0;	// player 2's sampled index from the probability distribution
-	float probabilityGrad1;	// whether player 1's sampled action should be increased or decreased
-	float probabilityGrad2;	// whether player 2's sampled action should be increased or decreased
-	float randNum;			// random number used to sample from the probability distribution
-	float score1;			// player 1's score
-	float score2;			// player 2's score
-	
-	float bias[N];
-	float result[N];
-	float gradient1[N];
-	float gradient2[N];
-	
-	for (uint32_t personality = 4; personality--;)
+	struct Agent
 	{
-		// Initialize biases so the probability distribution is uniform
-		memset(bias, 0, N * sizeof(float));
+		uint32_t sample;			// the sampled action from the softmax
+		float actionGradient;		// whether the action was good or bad
+		float score;				// the score of the action
+		float gradient[ACTIONS];	// the gradient of the action
+	};
 
-		int iter = ITERATIONS;
-		while (iter--)
+	vector<Agent> agents(AGENTS);	// the agents
+	
+	float randomNum;				// random number used to sample from the probability distribution
+	float bias[ACTIONS];			// the bias state to be used in the softmax
+	float probabilities[ACTIONS];	// the result of the softmax
+	
+	memset(bias, 0, sizeof(bias));	// set initial bias state to 0 for equal probability
+
+	uint32_t iteration = ITERATIONS;
+	while (iteration--)
+	{
+		// calculate the probability distribution
+		cpuSoftmax(bias, probabilities, ACTIONS);
+
+		for (Agent& agent : agents)
 		{
-			// calculate probabilities from bias
-			cpuSoftmax(bias, result, N);
 
-			// Sample from the distribution
-			randNum = random(0, 1);
-			for (int i = 0; i < N; i++)
+			// sample the action
+			randomNum = random(0, 1);
+			for (uint32_t counter = ACTIONS; counter--;)
 			{
-				randNum -= result[i];
-				if (randNum <= 0)
+				randomNum -= probabilities[counter];
+				if (randomNum <= 0)
 				{
-					sample1 = i;
+					agent.sample = counter;
 					break;
 				}
 			}
-
-			randNum = random(0, 1);
-			for (int i = 0; i < N; i++)
-			{
-				randNum -= result[i];
-				if (randNum <= 0)
-				{
-					sample2 = i;
-					break;
-				}
-			}
-
-			// Calculate the score
-			score1 = score[sample2 * N + sample1];
-			score2 = score[sample1 * N + sample2];
-
-			// should the chances of the sampled move be increased or decreased?
-
-			switch (personality)
-			{
-			case MALICIOUS:
-				probabilityGrad1 = (score2 > score1) * LEARNING_RATE;
-				probabilityGrad2 = (score1 > score2) * LEARNING_RATE;
-				break;
-			case LOVER:
-				probabilityGrad1 = (score2 < score1) * LEARNING_RATE;
-				probabilityGrad2 = (score1 < score2) * LEARNING_RATE;
-				break;
-			case COOPERATIVE:
-				probabilityGrad1 = (score1 > 0) * LEARNING_RATE;
-				probabilityGrad2 = (score2 > 0) * LEARNING_RATE;
-				break;
-			case SUISIDAL:
-				probabilityGrad1 = (score1 < 10) * LEARNING_RATE;
-				probabilityGrad2 = (score2 < 10) * LEARNING_RATE;
-				break;
-			}
-
-			// calculate gradient of the loss function
-			cpuSoftmaxGradient(result, &probabilityGrad1, &sample1, gradient1, N);
-			cpuSoftmaxGradient(result, &probabilityGrad2, &sample2, gradient2, N);
-
-			// update bias
-			for (int i = 0; i < N; i++)
-				bias[i] += gradient1[i] + gradient2[i];
 		}
 
-		cout << "Result:\n";
-		cout << "If both personalities are ";
-		switch (personality)
+		// face each other
+		for (uint32_t counter = 0; counter < AGENTS; counter += 2)
 		{
-		case MALICIOUS:
-			cout << "MALICIOUS";
-			break;
-		case LOVER:
-			cout << "LOVER";
-			break;
-		case COOPERATIVE:
-			cout << "COOPERATIVE";
-			break;
-		case SUISIDAL:
-			cout << "SUISIDAL";
-			break;
+			uint32_t sample1 = agents[counter].sample;
+			uint32_t sample2 = agents[counter + 1].sample;
+			agents[counter].score = score[sample1 + sample2 * ACTIONS];
+			agents[counter + 1].score = score[sample2 + sample1 * ACTIONS];
 		}
-		cout << ", the optimal strategy is to Snitch " << result[0] * 100 << "% of the time and Silent " << result[1] * 100 << "% of the time.\n\n";
 
-		/*cout << "Bias: ";
-		for (int i = 0; i < N; i++)
-			cout << bias[i] << " ";
-		cout << "\n";*/
+		// sort the agents by least time in prison
+		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });
+		
+		// set the top agents to have a positive gradient and the bottom agents to have a negative gradient
+		for (uint32_t counter = 0; counter < AGENTS; counter++)
+			agents[counter].actionGradient = (counter < ceil(AGENTS* TOP_PERCENT)) ? 1 : -1;
+
+		// calculate the gradient for each agent
+		for (Agent& agent : agents)
+			cpuSoftmaxGradient(probabilities, &agent.actionGradient, &agent.sample, agent.gradient, ACTIONS);
+		
+		// update the bias state
+		for (Agent& agent : agents)
+			for (uint32_t counter = ACTIONS; counter--;)
+				bias[counter] += LEARNING_RATE * agent.gradient[counter];
 	}
+
+	// print the final probability distribution
+	cout << "Probabilities: ";
+	for (uint32_t counter = 0; counter < ACTIONS; counter++)
+		cout << probabilities[counter] << " ";
+	cout << '\n';
 
 	return 0;
 }
