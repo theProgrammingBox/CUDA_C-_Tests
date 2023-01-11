@@ -43,6 +43,10 @@ IMPORTANT LESSONS
 5. Interestingly, if Rock vs Rock gives 10 instead of 0, then a few agents will converge to just playing Rock, but the rest will converge to Nash equilibrium. Only a portion of the agents can converge to Rock
 (I think this is because once a few agents converge to just playing Rock, then the rest of the Nash equilibrium agents will prevent more agents from converging to just playing Rock)
 (Those few agents got lucky and became rich while the other agents are busy keeping each other in check)
+(It seems that the number of agents that are chosen to survive plays a huge part in the number of agents that converge to playing Rock)
+(It may be because the top few are perfecting what they are doing since they survived, while the rest are still exploring since they lost and don't exactly know what to do)
+(To prevent this, the shuffling	algorithms can be changed so that I allows local behaviors, but splits and combines the population to prevent local behaviors from becoming too strong)
+(splitting to encourage diversity, combining to prevent local behaviors from becoming too strong)
 */
 
 static struct xorwow32
@@ -79,14 +83,10 @@ const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, fl
 
 const static void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
 {
-	float max = inputMatrix[0];
-	for (uint32_t counter = size; counter--;)
-		if (inputMatrix[counter] > max)
-			max = inputMatrix[counter];
 	float sum = 0;
 	for (uint32_t counter = size; counter--;)
 	{
-		outputMatrix[counter] = exp(inputMatrix[counter] - max);
+		outputMatrix[counter] = exp(inputMatrix[counter]);
 		sum += outputMatrix[counter];
 	}
 	sum = 1.0f / sum;
@@ -103,25 +103,25 @@ const static void cpuSoftmaxGradient(float* outputMatrix, bool* isSurvivor, uint
 }
 
 int main() {
-	constexpr uint32_t AGENTS = 16;
+	constexpr uint32_t AGENTS = 4;
 	constexpr uint32_t BATCHES = 128;
-	constexpr uint32_t ACTIONS = 3;
+	constexpr uint32_t ACTIONS = 2;
 	constexpr uint32_t ITERATIONS = 10000;
 	constexpr float LEARNING_RATE = 1.0f;
-	constexpr float TOP_PERCENT = 0.1f;
+	constexpr float TOP_PERCENT = 0.5f;
 	constexpr float gradientScalar = 1.0f / (AGENTS * BATCHES);
-
-	/*// Prisoner's Dilemma, score is time in prison
-	float score[ACTIONS * ACTIONS] = {
-		2, 3,	// (Snitch1 & Snitch2) | (Silent1 & Snitch2)
-		0, 1	// (Snitch1 & Silent2) | (Silent1 & Silent2)
-	};*/
 	
-	// Rock Paper Scissors
+	/*// Rock Paper Scissors
 	float score[ACTIONS * ACTIONS] = {
 		0, 1, -1,
 		-1, 0, 1,
 		1, -1, 0
+	};*/
+
+	// Prisoner's Dilemma, score is time in prison
+	float score[ACTIONS * ACTIONS] = {
+		2, 3,	// (Snitch1 & Snitch2) | (Silent1 & Snitch2)
+		0, 1	// (Snitch1 & Silent2) | (Silent1 & Silent2)
 	};
 
 	struct Agent
@@ -192,8 +192,8 @@ int main() {
 			}
 		}
 
-		// sort the agents by largest score
-		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score > b.score; });
+		// sort the agents by lowest prison time
+		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });
 		
 		// set the top agents to survive and the bottom agents to die
 		for (uint32_t counter = AGENTS; counter--;)
