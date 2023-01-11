@@ -29,8 +29,18 @@ This can often lead to local behavior, like a fish evolving in a pond next to an
 This factor is ultimately a constraint that can effect the average nash equilibrium of the agents.
 This may be because although many agents have the same ranking, the number of agents that survive is limited, leading to a the same actions leading to different results.
 (We need a way to not punish ties because it is causing a problem in the nash equilibrium)
+(Actually, 50% might just be the best for most cases because it ensures that there are equal numbers of positive and negative gradients)
+For example, if all agents pick the same action, but only 1% survive, then the negative gradient will overpower the positive gradient pushing for that action.
 
 4. Adding batches when sampling one agent's performance will lead to a more accurate representation of the nash equilibrium.
+
+
+IMPORTANT LESSONS
+1. Low learning rate allows stable convergence
+2. Massive batch size allows stable convergence
+3. In the case of Rock Paper Scissors, keeping the top 10% of agents is a lot better than keeping the top 90% of agents(see if this applies to other games)
+4. In the case of Rock Paper Scissors, having more agents leads to results closer to the nash equilibrium. 4 was better then 2 agents, 64 was around the same to 4 agents
+
 */
 
 static struct xorwow32
@@ -67,10 +77,14 @@ const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, fl
 
 const static void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
 {
+	float max = inputMatrix[0];
+	for (uint32_t counter = size; counter--;)
+		if (inputMatrix[counter] > max)
+			max = inputMatrix[counter];
 	float sum = 0;
 	for (uint32_t counter = size; counter--;)
 	{
-		outputMatrix[counter] = exp(inputMatrix[counter]);
+		outputMatrix[counter] = exp(inputMatrix[counter] - max);
 		sum += outputMatrix[counter];
 	}
 	sum = 1.0f / sum;
@@ -78,45 +92,50 @@ const static void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t s
 		outputMatrix[counter] *= sum;
 }
 
-const static void cpuSoftmaxGradient(float* outputMatrix, float* gradient, uint32_t* sample, float* resultMatrix, uint32_t size)
+const static void cpuSoftmaxGradient(float* outputMatrix, float* gradient, uint32_t* sample, float* resultMatrix, uint32_t size, float alpha)
 {
-	
+	/*for (uint32_t counter = size; counter--;)
+		resultMatrix[counter] = alpha * resultMatrix[counter] + *gradient * outputMatrix[counter] * ((counter == *sample) - outputMatrix[*sample]);
+	*/
+	float rest = *gradient < 0 ? 1 : -1;
 	for (uint32_t counter = size; counter--;)
-		resultMatrix[counter] = *gradient * outputMatrix[counter] * ((counter == *sample) - outputMatrix[*sample]);
+		resultMatrix[counter] = alpha * resultMatrix[counter] + rest + ((counter == *sample) * *gradient * 2);
 	
-	/*float rest = *gradient < 0 ? 1 : -1;
-	for (uint32_t counter = size; counter--;)
-		resultMatrix[counter] = rest + ((counter == *sample) * *gradient * 2);*/
 }
 
 int main() {
-	constexpr uint32_t AGENTS = 32;
-	constexpr uint32_t BATCHES = 4;
-	constexpr uint32_t ACTIONS = 2;
-	constexpr uint32_t ITERATIONS = 1000;
-	constexpr float LEARNING_RATE = 0.1f;
-	constexpr float TOP_PERCENT = 0.6f;
+	constexpr uint32_t AGENTS = 4;
+	constexpr uint32_t BATCHES = 128;
+	constexpr uint32_t ACTIONS = 3;
+	constexpr uint32_t ITERATIONS = 10000;
+	constexpr float LEARNING_RATE = 0.01f;
+	constexpr float TOP_PERCENT = 0.1f;
 
-	// Prisoner's Dilemma, score is time in prison
+	/*// Prisoner's Dilemma, score is time in prison
 	float score[ACTIONS * ACTIONS] = {
-		20, 0,	// (Snitch1 & Snitch2) | (Silent1 & Snitch2)
-		0, 0	// (Snitch1 & Silent2) | (Silent1 & Silent2)
+		2, 3,	// (Snitch1 & Snitch2) | (Silent1 & Snitch2)
+		0, 1	// (Snitch1 & Silent2) | (Silent1 & Silent2)
+	};*/
+	
+	// Rock Paper Scissors
+	float score[ACTIONS * ACTIONS] = {
+		0, 1, -1,
+		-1, 0, 1,
+		1, -1, 0
 	};
 
 	struct Agent
 	{
-		float bias[ACTIONS];				// the bias state to be used in the softmax
-		float probabilities[ACTIONS];		// the result of the softmax
-		uint32_t sample[BATCHES];			// the sampled action from the softmax
-		float actionGradient;				// whether the actions were good or bad
-		float score;						// the score of the action
-		float gradient[ACTIONS * BATCHES];	// the gradient of the action
+		float bias[ACTIONS];			// the bias state to be used in the softmax
+		float probabilities[ACTIONS];	// the result of the softmax
+		uint32_t sample[BATCHES];		// the sampled action from the softmax
+		float actionGradient;			// whether the actions were good or bad
+		float score;					// the score of the action
+		float gradient[ACTIONS];		// the gradient of the action
 
 		Agent() { memset(bias, 0, sizeof(bias)); }	// set initial bias state to 0 for equal probability
 	};
-
 	vector<Agent> agents(AGENTS);	// the agents
-	float randomNumber;				// random number used to sample from the probability distribution
 	
 	uint32_t iteration = ITERATIONS;
 	while (iteration--)
@@ -129,35 +148,37 @@ int main() {
 			// sample the action
 			for (uint32_t batch = BATCHES; batch--;)
 			{
-				randomNumber = random(0.0f, 1.0f);
-				for (uint32_t action = ACTIONS; action--;)
+				float number = random(0.0f, 1.0f);
+				uint32_t action = 0;
+				while (true)
 				{
-					randomNumber -= agent.probabilities[action];
-					if (randomNumber <= 0)
-					{
-						agent.sample[batch] = action;
+					number -= agent.probabilities[action];
+					if (number < 0)
 						break;
-					}
+					action++;
+					action -= (action == ACTIONS) * ACTIONS;
 				}
+				agent.sample[batch] = action;
 			}
 		}
 
-		// randomize the order of the agents
+		// reset score
 		for (uint32_t counter = AGENTS; counter--;)
-		{
-			uint32_t index = random() % AGENTS;
-			uint32_t index2 = random() % AGENTS;
-			Agent temp = agents[index];
-			agents[index] = agents[index2];
-			agents[index2] = temp;
-		}
-		
-		// face each other
-		for (uint32_t counter = 0; counter < AGENTS; counter += 2)
-		{
 			agents[counter].score = 0;
-			agents[counter + 1].score = 0;
-			for (uint32_t batch = BATCHES; batch--;)
+		
+		for (uint32_t batch = BATCHES; batch--;)
+		{
+			// randomize the order of the agents
+			for (uint32_t counter = AGENTS; counter--;)
+			{
+				uint32_t index = random() % AGENTS;
+				Agent temp = agents[counter];
+				agents[counter] = agents[index];
+				agents[index] = temp;
+			}
+
+			// face each other
+			for (uint32_t counter = 0; counter < AGENTS; counter += 2)
 			{
 				uint32_t sample1 = agents[counter].sample[batch];
 				uint32_t sample2 = agents[counter + 1].sample[batch];
@@ -166,48 +187,78 @@ int main() {
 			}
 		}
 
-		// sort the agents by least time in prison
-		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });
+		// sort the agents by largest score
+		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score > b.score; });
 		
 		// set the top agents to have a positive gradient and the bottom agents to have a negative gradient
 		for (uint32_t counter = AGENTS; counter--;)
 			agents[counter].actionGradient = (counter < ceil(AGENTS * TOP_PERCENT)) ? 1 : -1;
-
+		
 		// calculate and apply the gradient for each agent
 		for (Agent& agent : agents)
 		{
+			//reset the gradient
+			for (uint32_t counter = ACTIONS; counter--;)
+				agent.gradient[counter] = 0;
+			// calculate the gradient
 			for (uint32_t batch = BATCHES; batch--;)
-			{
-				cpuSoftmaxGradient(agent.probabilities, &agent.actionGradient, &agent.sample[batch], agent.gradient + batch * ACTIONS, ACTIONS);
-				for (uint32_t counter = ACTIONS; counter--;)
-					agent.bias[counter] += LEARNING_RATE * agent.gradient[batch * ACTIONS + counter];
-				// incomplete, average over batches, or not if you want a kind of momentum like effect
-			}
+				cpuSoftmaxGradient(agent.probabilities, &agent.actionGradient, &agent.sample[batch], agent.gradient, ACTIONS, 1);
+			
+			// scale the gradient
+			for (uint32_t counter = ACTIONS; counter--;)
+				agent.gradient[counter] *= LEARNING_RATE / BATCHES;
+			
+			// apply the gradient
+			for (uint32_t counter = ACTIONS; counter--;)
+				agent.bias[counter] += agent.gradient[counter];
 		}
+
+		/*// every 10 iterations, print the agents probabilities
+		if (iteration < 10)
+		{
+			for (Agent& agent : agents)
+			{
+				for (uint32_t counter = 0; counter < ACTIONS; counter++)
+					cout << agent.probabilities[counter] << " ";
+				cout << '\n';
+				for (uint32_t counter = 0; counter < ACTIONS; counter++)
+					cout << agent.bias[counter] << " ";
+				cout << '\n';
+				for (uint32_t counter = 0; counter < ACTIONS; counter++)
+					cout << agent.gradient[counter] << " ";
+				cout << '\n';
+				cout << '\n';
+			}
+			cout << '\n';
+		}*/
 	}
 
 	// print the final probability distribution
 	for (Agent& agent : agents)
 	{
 		cpuSoftmax(agent.bias, agent.probabilities, ACTIONS);
-		cout << agent.probabilities[0] << " " << agent.probabilities[1] << "\n";/**/
-		/*//score
-		cout << "Score: " << agent.score << ", ";
-		//actions
-		cout << "Actions: ";
+		cout << "Probability distribution: ";
+		for (uint32_t counter = 0; counter < ACTIONS; counter++)
+			cout << agent.probabilities[counter] << " ";
+		cout << '\n';
+		
+		cout << "Score: " << agent.score << '\n';
+		cout << "Action Gradient: " << agent.actionGradient << '\n';
+		
+		/*cout << "Actions: ";
 		for (uint32_t batch = 0; batch < BATCHES; batch++)
 			cout << agent.sample[batch] << " ";
-		//action gradient
-		cout << ", Action Gradient: " << agent.actionGradient << ", ";
-		//bias
+		cout << '\n';*/
+		
 		cout << "Bias: ";
 		for (uint32_t counter = 0; counter < ACTIONS; counter++)
 			cout << agent.bias[counter] << " ";
-		//gradient
-		cout << ", Gradient: ";
-		for (uint32_t counter = 0; counter < ACTIONS * BATCHES; counter++)
+		cout << '\n';
+		
+		cout << "Gradient: ";
+		for (uint32_t counter = 0; counter < ACTIONS; counter++)
 			cout << agent.gradient[counter] << " ";
-		cout << "\n";*/
+		cout << "\n\n";
 	}
 
 	return 0;
