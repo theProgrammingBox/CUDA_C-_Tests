@@ -16,25 +16,6 @@ using std::ceil;
 using std::exp;
 
 /*
-What I learned from this:
-1. Only having one agent facing itself will lead to an convergence based on its own actions.
-Based on the kind of environment, the final probability may not accurately represent the nash equilibrium of a diverse population.
-
-2. Having more agents will lead to a more accurate representation of the nash equilibrium or a close approximation.
-This is because the agents will be able to evolve from each other's actions, which allows the agents to learn from different "personalities"
-The algorithm of match making is very important because it will determine who the agents will face and evolve from.
-This can often lead to local behavior, like a fish evolving in a pond next to an ocean.
-
-3. The number of agents you choose to "survive" is also very important.
-This factor is ultimately a constraint that can effect the average nash equilibrium of the agents.
-This may be because although many agents have the same ranking, the number of agents that survive is limited, leading to a the same actions leading to different results.
-(We need a way to not punish ties because it is causing a problem in the nash equilibrium)
-(Actually, 50% might just be the best for most cases because it ensures that there are equal numbers of positive and negative gradients)
-For example, if all agents pick the same action, but only 1% survive, then the negative gradient will overpower the positive gradient pushing for that action.
-
-4. Adding batches when sampling one agent's performance will lead to a more accurate representation of the nash equilibrium.
-
-
 IMPORTANT LESSONS
 1. Low learning rate allows stable convergence
 2. Massive batch size allows stable convergence
@@ -47,6 +28,9 @@ IMPORTANT LESSONS
 (It may be because the top few are perfecting what they are doing since they survived, while the rest are still exploring since they lost and don't exactly know what to do)
 (To prevent this, the shuffling	algorithms can be changed so that I allows local behaviors, but splits and combines the population to prevent local behaviors from becoming too strong)
 (splitting to encourage diversity, combining to prevent local behaviors from becoming too strong)
+
+Whats Next:
+1. Tic Tac Toe
 */
 
 static struct xorwow32
@@ -107,8 +91,9 @@ int main() {
 	constexpr uint32_t BATCHES = 128;
 	constexpr uint32_t ACTIONS = 3;	//2
 	constexpr uint32_t ITERATIONS = 10000;
-	constexpr float LEARNING_RATE = 1.0f;
+	constexpr float LEARNING_RATE = 0.1f;
 	constexpr float TOP_PERCENT = 0.5f;
+	constexpr float TOP_AGENTS = AGENTS * TOP_PERCENT;
 	constexpr float gradientScalar = 1.0f / (AGENTS * BATCHES);
 	
 	// Rock Paper Scissors
@@ -197,10 +182,12 @@ int main() {
 
 		/*// sort the agents by lowest prison time
 		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });*/
-		
-		// set the top agents to survive and the bottom agents to die
+
+		// see if the agent is in the top percentile
 		for (uint32_t counter = AGENTS; counter--;)
-			agents[counter].isSurvivor = counter < ceil(AGENTS* TOP_PERCENT);
+		{
+			agents[counter].isSurvivor = counter <= TOP_AGENTS;
+		}
 		
 		// calculate and apply the gradient for each agent
 		for (Agent& agent : agents)
@@ -209,11 +196,11 @@ int main() {
 			
 			// calculate the gradient
 			for (uint32_t batch = BATCHES; batch--;)
-				cpuSoftmaxGradient(agent.probabilities, &agent.isSurvivor, &agent.sample[batch], agent.gradient, ACTIONS, 1);
+				cpuSoftmaxGradient(agent.probabilities, &agent.isSurvivor, &agent.sample[batch], agent.gradient, ACTIONS, gradientScalar);
 			
 			// apply the gradient
 			for (uint32_t counter = ACTIONS; counter--;)
-				agent.bias[counter] += agent.gradient[counter] * gradientScalar;
+				agent.bias[counter] += gradientScalar * agent.gradient[counter];
 		}
 	}
 
@@ -227,7 +214,7 @@ int main() {
 		cout << '\n';
 		
 		cout << "Score: " << agent.score << '\n';
-		cout << "Action Gradient: " << agent.isSurvivor << '\n';
+		cout << "Is Agent a Survivor?: " << agent.isSurvivor << '\n';
 		
 		/*cout << "Actions: ";
 		for (uint32_t batch = 0; batch < BATCHES; batch++)
