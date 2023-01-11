@@ -5,6 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <math.h>
+#include <fstream>
 
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
@@ -14,6 +15,7 @@ using std::vector;
 using std::sort;
 using std::ceil;
 using std::exp;
+using std::ofstream;
 
 /*
 IMPORTANT LESSONS
@@ -30,7 +32,10 @@ IMPORTANT LESSONS
 (splitting to encourage diversity, combining to prevent local behaviors from becoming too strong)
 
 Whats Next:
-1. Tic Tac Toe
+1. Visualizing the results
+2. Top agent teachers in combination of exploration for the rest of the agents (Teachers have less influence over exploration)
+3. Choosing Teamates/enemies based on their actions
+4. Tic Tac Toe
 */
 
 static struct xorwow32
@@ -87,13 +92,13 @@ const static void cpuSoftmaxGradient(float* outputMatrix, bool* isSurvivor, uint
 }
 
 int main() {
-	constexpr uint32_t AGENTS = 16;
+	constexpr uint32_t AGENTS = 4;		// Should be an even number due to my pvp algorithm
 	constexpr uint32_t BATCHES = 128;
-	constexpr uint32_t ACTIONS = 3;	//2
-	constexpr uint32_t ITERATIONS = 10000;
-	constexpr float LEARNING_RATE = 0.1f;
-	constexpr float TOP_PERCENT = 0.5f;
-	constexpr float TOP_AGENTS = AGENTS * TOP_PERCENT;
+	constexpr uint32_t ACTIONS = 3;		//2 for prisoner's dilemma, 3 for rock paper scissors
+	constexpr uint32_t ITERATIONS = 1000;
+	constexpr float LEARNING_RATE = 1.0f;
+	constexpr float TOP_PERCENT = 0.2f;
+	constexpr uint32_t TOP_AGENTS = AGENTS * TOP_PERCENT;
 	constexpr float gradientScalar = 1.0f / (AGENTS * BATCHES);
 	
 	// Rock Paper Scissors
@@ -113,31 +118,42 @@ int main() {
 	{
 		float bias[ACTIONS];			// the bias state to be used in the softmax
 		float probabilities[ACTIONS];	// the result of the softmax
-		uint32_t sample[BATCHES];		// the sampled action from the softmax
+		uint32_t sample[BATCHES];		// the sampled actions from the probabilities
 		bool isSurvivor;				// whether the actions were good or bad
 		float score;					// the score of the action
 		float gradient[ACTIONS];		// the gradient of the action
 
 		Agent()
 		{
-			memset(bias, 0, sizeof(bias));	// set initial bias state to 0 for equal probability
-			//cpuGenerateUniform(bias, ACTIONS, -1, 1);	// set initial bias state to random values
+			//memset(bias, 0, sizeof(bias));			// set initial bias state to 0 for equal probability
+			cpuGenerateUniform(bias, ACTIONS, -1, 1);	// set initial bias state to random values
 		}
 	};
 	
 	vector<Agent> agents(AGENTS);	// the agents
 	
+	ofstream dataFile("data.txt");
+	dataFile << ITERATIONS << '\n';
+	dataFile << AGENTS << '\n';
+	dataFile << ACTIONS << '\n';
+	
 	uint32_t iteration = ITERATIONS;
 	while (iteration--)
 	{
+		// calculate the probabilities of each action and set score to 0
 		for (Agent& agent : agents)
 		{
-			// calculate the probability distribution
 			cpuSoftmax(agent.bias, agent.probabilities, ACTIONS);
+			agent.score = 0;
+		}
 
-			// sample the action
-			for (uint32_t batch = BATCHES; batch--;)
+		// run the game BATCHES times to get an "average" score
+		for (uint32_t batch = BATCHES; batch--;)
+		{
+			// every agent make a move
+			for (Agent& agent : agents)
 			{
+				// sample an action
 				float number = random(0.0f, 1.0f);
 				uint32_t action = 0;
 				while (true)
@@ -150,30 +166,27 @@ int main() {
 				}
 				agent.sample[batch] = action;
 			}
-		}
 
-		// reset score
-		for (uint32_t counter = AGENTS; counter--;)
-			agents[counter].score = 0;
-		
-		for (uint32_t batch = BATCHES; batch--;)
-		{
-			// randomize the order of the agents
+			// randomize the order of the agents for random matchups
+			vector<Agent*> matchVector(AGENTS);
+			for (uint32_t counter = AGENTS; counter--;)
+				matchVector[counter] = &agents[counter];
+			
 			for (uint32_t counter = AGENTS; counter--;)
 			{
 				uint32_t index = random() % AGENTS;
-				Agent temp = agents[counter];
-				agents[counter] = agents[index];
-				agents[index] = temp;
+				Agent* temp = matchVector[counter];
+				matchVector[counter] = matchVector[index];
+				matchVector[index] = temp;
 			}
 
-			// face each other
+			// pvp
 			for (uint32_t counter = 0; counter < AGENTS; counter += 2)
 			{
-				uint32_t sample1 = agents[counter].sample[batch];
-				uint32_t sample2 = agents[counter + 1].sample[batch];
-				agents[counter].score += score[sample1 + sample2 * ACTIONS];
-				agents[counter + 1].score += score[sample2 + sample1 * ACTIONS];
+				uint32_t sample1 = matchVector[counter]->sample[batch];
+				uint32_t sample2 = matchVector[counter + 1]->sample[batch];
+				matchVector[counter]->score += score[sample1 + sample2 * ACTIONS];
+				matchVector[counter + 1]->score += score[sample2 + sample1 * ACTIONS];
 			}
 		}
 
@@ -182,25 +195,34 @@ int main() {
 
 		/*// sort the agents by lowest prison time
 		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });*/
-
-		// see if the agent is in the top percentile
-		for (uint32_t counter = AGENTS; counter--;)
-		{
-			agents[counter].isSurvivor = counter <= TOP_AGENTS;
-		}
 		
 		// calculate and apply the gradient for each agent
+		uint32_t counter = 0;
 		for (Agent& agent : agents)
 		{
+			// see if the agent is in the top percentile
+			agent.isSurvivor = counter++ <= TOP_AGENTS;
+
+			// reset the gradient
 			memset(agent.gradient, 0, sizeof(agent.gradient));
-			
+
 			// calculate the gradient
 			for (uint32_t batch = BATCHES; batch--;)
 				cpuSoftmaxGradient(agent.probabilities, &agent.isSurvivor, &agent.sample[batch], agent.gradient, ACTIONS, gradientScalar);
-			
+
 			// apply the gradient
 			for (uint32_t counter = ACTIONS; counter--;)
 				agent.bias[counter] += gradientScalar * agent.gradient[counter];
+		}
+
+		// save the probabilities of each agent and their survival status
+		for (Agent& agent : agents)
+		{
+			//dataFile << agent.score / BATCHES << '\n';
+			dataFile << agent.isSurvivor << '\n';
+			for (uint32_t counter = 0; counter < ACTIONS; counter++)
+				dataFile << agent.probabilities[counter] << ' ';
+			dataFile << '\n';
 		}
 	}
 
@@ -231,6 +253,8 @@ int main() {
 			cout << agent.gradient[counter] << " ";
 		cout << "\n\n";
 	}
+
+	dataFile.close();
 
 	return 0;
 }
