@@ -103,26 +103,26 @@ const static void cpuSoftmaxGradient(float* outputMatrix, bool* isSurvivor, uint
 }
 
 int main() {
-	constexpr uint32_t AGENTS = 4;
+	constexpr uint32_t AGENTS = 16;
 	constexpr uint32_t BATCHES = 128;
-	constexpr uint32_t ACTIONS = 2;
+	constexpr uint32_t ACTIONS = 3;	//2
 	constexpr uint32_t ITERATIONS = 10000;
 	constexpr float LEARNING_RATE = 1.0f;
 	constexpr float TOP_PERCENT = 0.5f;
 	constexpr float gradientScalar = 1.0f / (AGENTS * BATCHES);
 	
-	/*// Rock Paper Scissors
+	// Rock Paper Scissors
 	float score[ACTIONS * ACTIONS] = {
 		0, 1, -1,
 		-1, 0, 1,
 		1, -1, 0
-	};*/
+	};/**/
 
-	// Prisoner's Dilemma, score is time in prison
+	/*// Prisoner's Dilemma, score is time in prison
 	float score[ACTIONS * ACTIONS] = {
 		2, 3,	// (Snitch1 & Snitch2) | (Silent1 & Snitch2)
 		0, 1	// (Snitch1 & Silent2) | (Silent1 & Silent2)
-	};
+	};*/
 
 	struct Agent
 	{
@@ -192,8 +192,11 @@ int main() {
 			}
 		}
 
-		// sort the agents by lowest prison time
-		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });
+		// sort the agents by highest score
+		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score > b.score; });
+
+		/*// sort the agents by lowest prison time
+		sort(agents.begin(), agents.end(), [](const Agent& a, const Agent& b) { return a.score < b.score; });*/
 		
 		// set the top agents to survive and the bottom agents to die
 		for (uint32_t counter = AGENTS; counter--;)
