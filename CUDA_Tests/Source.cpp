@@ -94,11 +94,11 @@ const static void cpuSoftmaxGradient(float* outputMatrix, bool* isSurvivor, uint
 }
 
 int main() {
-	constexpr uint32_t AGENTS = 8;		// Should be an even number due to my pvp algorithm
+	constexpr uint32_t AGENTS = 2;		// Should be an even number due to my pvp algorithm
 	constexpr uint32_t BATCHES = 32;
 	constexpr uint32_t ACTIONS = 3;		//2 for prisoner's dilemma, 3 for rock paper scissors
 	constexpr uint32_t ITERATIONS = 10000;
-	constexpr float LEARNING_RATE = 0.01f;
+	constexpr float LEARNING_RATE = 0.001f;
 	constexpr float TOP_PERCENT = 0.2f;
 	constexpr uint32_t TOP_AGENTS = AGENTS * TOP_PERCENT;
 	constexpr float gradientScalar = LEARNING_RATE / BATCHES;
