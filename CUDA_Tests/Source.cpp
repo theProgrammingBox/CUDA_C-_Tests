@@ -10,6 +10,7 @@
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
+using std::chrono::microseconds;
 using std::cout;
 using std::vector;
 using std::sort;
@@ -32,7 +33,7 @@ IMPORTANT LESSONS
 (splitting to encourage diversity, combining to prevent local behaviors from becoming too strong)
 
 Whats Next:
-1. Visualizing the results
+1. Adding self play to the training process
 2. Top agent teachers in combination of exploration for the rest of the agents
 (Teachers have less influence over exploration)
 (Actually, this can lead to winner's bias, idk)
@@ -40,36 +41,81 @@ Whats Next:
 4. Tic Tac Toe
 */
 
-static struct xorwow32
+static class Random
 {
-	uint32_t state[6];
-
-	xorwow32(uint32_t seed) : state{
-		seed ^ 123456789,
-		seed ^ 362436069,
-		seed ^ 521288629,
-		seed ^ 88675123,
-		seed ^ 5783321,
-		seed ^ 6615241 } {}
-
-	uint32_t operator()()
+public:
+	static uint32_t MakeSeed(uint32_t seed)	// make seed from time and seed
 	{
-		uint32_t t = *state ^ (*state >> 2);
-		memcpy(state, state + 1, 16);
-		state[4] ^= (state[4] << 4) ^ (t ^ (t << 1));
-		return (state[5] += 362437) + state[4];
+		uint32_t result = seed;
+		result = Hash((uint8_t*)&result, sizeof(result), nanosecond());
+		result = Hash((uint8_t*)&result, sizeof(result), microsecond());
+		return result;
 	}
 
-	float operator()(float min, float max)
+	void Seed(uint32_t seed)	// seed the random number generator
 	{
-		return min + (max - min) * operator()() * 2.3283064371e-10;	// 0 & 1 inclusive, 2.3283064365e-10 for exclusive 1
+		state[0] = Hash((uint8_t*)&seed, sizeof(seed), seed);
+		state[1] = Hash((uint8_t*)&seed, sizeof(seed), state[0]);
 	}
-} random(duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count());
+
+	uint32_t Ruint32()	// XORSHIFT128+
+	{
+		uint64_t a = state[0];
+		uint64_t b = state[1];
+		state[0] = b;
+		a ^= a << 23;
+		state[1] = a ^ b ^ (a >> 18) ^ (b >> 5);
+		return uint32_t((state[1] + b) >> 32);
+	}
+
+	float Rfloat(float min, float max) { return min + (max - min) * Ruint32() * 2.3283064371e-10; }
+
+	static uint32_t Hash(const uint8_t* key, size_t len, uint32_t seed)	// MurmurHash3
+	{
+		uint32_t h = seed;
+		uint32_t k;
+		for (size_t i = len >> 2; i; i--) {
+			memcpy(&k, key, sizeof(uint32_t));
+			key += sizeof(uint32_t);
+			h ^= murmur_32_scramble(k);
+			h = (h << 13) | (h >> 19);
+			h = h * 5 + 0xe6546b64;
+		}
+		k = 0;
+		for (size_t i = len & 3; i; i--) {
+			k <<= 8;
+			k |= key[i - 1];
+		}
+		h ^= murmur_32_scramble(k);
+		h ^= len;
+		h ^= h >> 16;
+		h *= 0x85ebca6b;
+		h ^= h >> 13;
+		h *= 0xc2b2ae35;
+		h ^= h >> 16;
+		return h;
+	}
+
+private:
+	uint64_t state[2];
+
+	static uint32_t murmur_32_scramble(uint32_t k) {
+		k *= 0xcc9e2d51;
+		k = (k << 15) | (k >> 17);
+		k *= 0x1b873593;
+		return k;
+	}
+
+	static uint32_t nanosecond() { return duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count(); }
+	static uint32_t microsecond() { return duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count(); }
+};
 
 const static void cpuGenerateUniform(float* matrix, uint32_t size, float min, float max)
 {
+	Random random;
+	random.Seed(Random::MakeSeed(0));
 	for (uint32_t counter = size; counter--;)
-		matrix[counter] = random(min, max);
+		matrix[counter] = random.Rfloat(min, max);
 }
 
 const static void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
@@ -103,6 +149,9 @@ int main() {
 	constexpr uint32_t TOP_AGENTS = AGENTS * TOP_PERCENT;
 	constexpr float gradientScalar = LEARNING_RATE / BATCHES;
 	
+	static Random random;
+	random.Seed(Random::MakeSeed(123));
+	
 	// Rock Paper Scissors
 	float score[ACTIONS * ACTIONS] = {
 		0, 1, -1,
@@ -120,15 +169,26 @@ int main() {
 	{
 		float bias[ACTIONS];			// the bias state to be used in the softmax
 		float probabilities[ACTIONS];	// the result of the softmax
-		uint32_t sample;				// the sampled action from the probabilities
-		bool isSurvivor;				// whether the actions were good or bad
-		float score;					// the score of the action
 		float biasGradient[ACTIONS];	// the biasGradient of the action
 
 		Agent()
 		{
 			//memset(bias, 0, sizeof(bias));			// set initial bias state to 0 for equal probability
 			cpuGenerateUniform(bias, ACTIONS, -1, 1);	// set initial bias state to random values
+		}
+
+		uint32_t SampleAction()
+		{
+			float number = random.Rfloat(0.0f, 1.0f);
+			uint32_t sample = 0;
+			while (true)
+			{
+				number -= probabilities[sample];
+				if (number < 0) break;
+				sample++;
+				sample -= (sample == ACTIONS) * ACTIONS;
+			}
+			return sample;
 		}
 	};
 	
@@ -142,58 +202,33 @@ int main() {
 	uint32_t iteration = ITERATIONS;
 	while (iteration--)
 	{
+		// calculate the probabilities of each action and record the bias gradient
 		for (Agent& agent : agents)
 		{
-			// calculate the probabilities of each action
 			cpuSoftmax(agent.bias, agent.probabilities, ACTIONS);
-
-			// reset the biasGradient
 			memset(agent.biasGradient, 0, sizeof(agent.biasGradient));
 		}
 
-		// run the game BATCHES times before updating the agents
+		// run the game BATCHES times with unchanged bias states
 		for (uint32_t batch = BATCHES; batch--;)
 		{
-			// every agent make a move
-			for (Agent& agent : agents)
+			// pvp
+			for (uint32_t counter = AGENTS; counter--;)
 			{
-				//reset the score
-				agent.score = 0;
+				Agent& agent1 = agents[counter];
+				Agent& agent2 = agents[random.Ruint32() % AGENTS];
+
+				//set the score
+				float score1 = 0;
+				float score2 = 0;
 
 				// sample an action
-				float number = random(0.0f, 1.0f);
-				uint32_t action = 0;
-				while (true)
-				{
-					number -= agent.probabilities[action];
-					if (number < 0)
-						break;
-					action++;
-					action -= (action == ACTIONS) * ACTIONS;
-				}
-				agent.sample = action;
-			}
-
-			// randomize the order of the agents for random matchups
-			vector<Agent*> matchVector(AGENTS);
-			for (uint32_t counter = AGENTS; counter--;)
-				matchVector[counter] = &agents[counter];
-
-			for (uint32_t counter = AGENTS; counter--;)
-			{
-				uint32_t index = random() % AGENTS;
-				Agent* temp = matchVector[counter];
-				matchVector[counter] = matchVector[index];
-				matchVector[index] = temp;
-			}
-
-			// pvp
-			for (uint32_t counter = 0; counter < AGENTS; counter += 2)
-			{
-				uint32_t sample1 = matchVector[counter]->sample;
-				uint32_t sample2 = matchVector[counter + 1]->sample;
-				matchVector[counter]->score += score[sample1 + sample2 * ACTIONS];
-				matchVector[counter + 1]->score += score[sample2 + sample1 * ACTIONS];
+				uint32_t action1 = agent1.SampleAction();
+				uint32_t action2 = agent2.SampleAction();
+				
+				// calculate the score
+				score1 += score[action1 + action2 * ACTIONS];
+				score2 += score[action2 + action1 * ACTIONS];
 			}
 
 			// sort the agents
