@@ -123,7 +123,7 @@ const static void cpuClippedLinearUnitGradient(float* inputMatrix, float* gradie
 		gradient = gradientMatrix[counter];
 		greaterZero = gradient > 0;
 		gradient = (greaterZero << 1) - 1;
-		outputMatrix[counter] = (((input > 1) ^ greaterZero) || ((input >= -1) ^ greaterZero)) * gradient;
+		outputMatrix[counter] = (((input >= 1) ^ greaterZero) || ((input > -1) ^ greaterZero)) * gradient;
 	}
 }
 
@@ -157,7 +157,7 @@ int main()
 		cout << gradientMatrix[counter] << ' ';
 	cout << '\n';
 	
-	cpuClippedLinearUnitGradient(inputMatrix, gradientMatrix, gradientOutputMatrix, size);
+	cpuClippedLinearUnitGradient(outputMatrix, gradientMatrix, gradientOutputMatrix, size);
 	
 	// print gradient output matrix
 	for (uint32_t counter = 0; counter < size; counter++)
