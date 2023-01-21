@@ -21,18 +21,14 @@ using std::ofstream;
 int main()
 {
 	// Testing precidence
-	float num;
-
-	num = 3;
-	cout << (~uint32_t(num) >> 31 << 1 - 1) << "\n";
-	/*cout << (1 - (uint32_t(num) & 0x80000000 >> 31)) << "\n";
-	cout << "Expected: 1\n";*/
-	cout << "----------------\n";
-
-	num = -2;
-	cout << (~uint32_t(num) >> 31 << 1 - 1) << "\n";
-	/*cout << (1 - (uint32_t(num) & 0x80000000 >> 31)) << "\n";
-	cout << "Expected: -1\n";*/
+	bool g;
+	for (float num = -2.0f; num < 2.0f; num += 0.1f)
+	{
+		cout << "Num: " << num << '\n';
+		g = num > 0;
+		cout << g << '\n';
+		cout << ((g << 1) - 1.0f) << '\n';
+	}
 
 	return 0;
 }
