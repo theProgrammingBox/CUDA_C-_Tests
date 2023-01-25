@@ -140,9 +140,13 @@ public:
 				runningState |= board[2] && board[2] == board[4] && board[2] == board[6];
 				runningState |= (moveCount == 9) << 1;
 			}
+			else
+				runningState |= 4;
 		}
 
-		if (runningState & 1)
+		if (runningState & 4)
+			cout << "Winner by Invalid move: " << (!player << 1) - 1.0f << "\n";
+		else if (runningState & 1)
 			cout << "Winner: " << (player << 1) - 1.0f << "\n";
 		else if (runningState & 2)
 			cout << "Draw\n";
