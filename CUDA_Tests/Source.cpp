@@ -123,23 +123,19 @@ public:
 		runningState = 0;
 		moveCount = 0;
 
-		while (runningState == 0)
+		while (!runningState)
 		{
 			player = !player;
 			uint32_t action = players[player].move();
-			if (board[action] == 0)
+			if (!board[action])
 			{
 				board[action] = (player << 1) - 1.0f;
 				moveCount++;
 
 				for (uint32_t i = 0; i < 3; i++)
-				{
 					runningState |= board[i] && board[i] == board[i + 3] && board[i] == board[i + 6];
-				}
 				for (uint32_t i = 0; i < 9; i += 3)
-				{
 					runningState |= board[i] && board[i] == board[i + 1] && board[i] == board[i + 2];
-				}
 				runningState |= board[0] && board[0] == board[4] && board[0] == board[8];
 				runningState |= board[2] && board[2] == board[4] && board[2] == board[6];
 				runningState |= (moveCount == 9) << 1;
