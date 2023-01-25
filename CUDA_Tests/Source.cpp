@@ -162,7 +162,6 @@ public:
 	}
 };
 
-
 int main()
 {
 	TicTacToe game;
