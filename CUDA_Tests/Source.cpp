@@ -225,7 +225,7 @@ public:
 	void AddToLayers(float* input)
 	{
 		layers.emplace_back();
-		cout << "Action:" << layers.back().FeedForward(this, input) << '\n';;
+		cout << "Action: " << layers.back().FeedForward(this, input) << '\n';;
 	}
 
 	void RemoveFromVector() { layers.pop_back(); }
@@ -246,6 +246,11 @@ int main()
 	float* input = new float[GlobalVars::INPUT];
 	for (uint32_t counter = GlobalVars::INPUT; counter--;)
 		input[counter] = GlobalVars::random.Rfloat(-1.0f, 1.0f);
+	
+	cout << "Input: ";
+	for (uint32_t counter = GlobalVars::INPUT; counter--;)
+		cout << input[counter] << ' ';
+	cout << '\n';
 	
 	for (uint32_t counter = 10; counter--;)
 		agent.AddToLayers(input);
