@@ -1,12 +1,9 @@
-//#include <cublas_v2.h>
-//#include <curand.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
 #include <algorithm>
 #include <math.h>
 #include <fstream>
-#include <memory>
 
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
@@ -15,11 +12,10 @@ using std::chrono::microseconds;
 using std::cout;
 using std::vector;
 using std::sort;
-using std::ceil;
 using std::exp;
+using std::min;
+using std::max;
 using std::ofstream;
-using std::unique_ptr;
-using std::make_unique;
 
 class Random
 {
@@ -96,6 +92,51 @@ private:
 	static uint32_t microsecond() { return duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count(); }
 };
 
+void cpuSgemmStridedBatched(
+	bool transB, bool transA,
+	int CCols, int CRows, int AColsBRows,
+	const float* alpha,
+	float* B, int ColsB, int SizeB,
+	float* A, int ColsA, int SizeA,
+	const float* beta,
+	float* C, int ColsC, int SizeC,
+	int batchCount)
+{
+	for (int b = batchCount; b--;)
+	{
+		for (int m = CCols; m--;)
+			for (int n = CRows; n--;)
+			{
+				float sum = 0;
+				for (int k = AColsBRows; k--;)
+					sum += (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]);
+				C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
+			}
+		A += SizeA;
+		B += SizeB;
+		C += SizeC;
+	}
+}
+
+void cpuCLU(float* inputMatrix, float* outputMatrix, uint32_t size)
+{
+	for (size_t counter = size; counter--;)
+		outputMatrix[counter] = min(1.0f, max(-1.0f, inputMatrix[counter]));
+}
+
+void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
+{
+	float sum = 0;
+	for (uint32_t counter = size; counter--;)
+	{
+		outputMatrix[counter] = exp(inputMatrix[counter]);
+		sum += outputMatrix[counter];
+	}
+	sum = 1.0f / sum;
+	for (uint32_t counter = size; counter--;)
+		outputMatrix[counter] *= sum;
+}
+
 namespace GlobalVars
 {
 	Random random(Random::MakeSeed(0));
@@ -103,81 +144,111 @@ namespace GlobalVars
 	constexpr uint32_t ACTIONS = 9;
 }
 
-class Agent
+class Species
 {
 public:
 	static constexpr uint32_t HIDDEN = 16;
-	
-	struct MyStruct
-	{
-		float* dynamicArray;
+	float* weight1;
+	float* weight2;
 
-		MyStruct() : dynamicArray(new float[GlobalVars::ACTIONS]) {}
-		MyStruct(MyStruct&& other) noexcept : dynamicArray(other.dynamicArray) { other.dynamicArray = nullptr; }
-		~MyStruct() { delete[] dynamicArray; }
-		void SetDynamicArray(float* array) { memcpy(dynamicArray, array, GlobalVars::ACTIONS * sizeof(float)); }
-		void PrintDynamicArray() const
+	Species()
+	{
+		weight1 = new float[HIDDEN * GlobalVars::INPUT];
+		weight2 = new float[GlobalVars::ACTIONS * HIDDEN];
+	}
+
+	~Species()
+	{
+		delete[] weight1;
+		delete[] weight2;
+	}
+};
+
+class Agent
+{
+public:
+	static constexpr float ONE = 1.0f;
+	static constexpr float ZERO = 0.0f;
+	Species* species;
+	
+	struct Layer
+	{
+		Agent* agent;
+		float* inputMatrix;
+		float* hiddenMatrix;
+		float* outputMatrix;
+		float* actionMatrix;
+
+		Layer() : inputMatrix(new float[GlobalVars::INPUT]), hiddenMatrix(new float[Species::HIDDEN]), outputMatrix(new float[GlobalVars::ACTIONS]), actionMatrix(new float[GlobalVars::ACTIONS]) {}
+		
+		Layer(Layer&& other) noexcept : inputMatrix(other.inputMatrix), hiddenMatrix(other.hiddenMatrix), outputMatrix(other.outputMatrix), actionMatrix(other.actionMatrix)
 		{
-			for (int i = 0; i < GlobalVars::ACTIONS; i++)
-				cout << dynamicArray[i] << ' ';
-			cout << '\n';
+			other.inputMatrix = nullptr;
+			other.hiddenMatrix = nullptr;
+			other.outputMatrix = nullptr;
+			other.actionMatrix = nullptr;
+		}
+		
+		~Layer()
+		{
+			delete[] inputMatrix;
+			delete[] hiddenMatrix;
+			delete[] outputMatrix;
+			delete[] actionMatrix;
+		}
+		
+		uint32_t FeedForward(Agent* agent, float* input)
+		{
+			this->agent = agent;
+			memcpy(inputMatrix, input, sizeof(float) * GlobalVars::INPUT);
+			cpuSgemmStridedBatched(false, false, Species::HIDDEN, 1, GlobalVars::INPUT, &ONE, agent->species->weight1, Species::HIDDEN, 0, inputMatrix, GlobalVars::INPUT, 0, &ZERO, hiddenMatrix, Species::HIDDEN, 0, 1);
+			cpuCLU(hiddenMatrix, hiddenMatrix, Species::HIDDEN);
+			cpuSgemmStridedBatched(false, false, GlobalVars::ACTIONS, 1, Species::HIDDEN, &ONE, agent->species->weight2, GlobalVars::ACTIONS, 0, hiddenMatrix, Species::HIDDEN, 0, &ZERO, outputMatrix, GlobalVars::ACTIONS, 0, 1);
+			cpuCLU(outputMatrix, outputMatrix, GlobalVars::ACTIONS);
+			cpuSoftmax(outputMatrix, actionMatrix, GlobalVars::ACTIONS);
+			
+			float number = GlobalVars::random.Rfloat(0.0f, 1.0f);
+			uint32_t sample = 0;
+			while (true)
+			{
+				number -= actionMatrix[sample];
+				if (number < 0) break;
+				sample++;
+				sample -= (sample == GlobalVars::ACTIONS) * GlobalVars::ACTIONS;
+			}
+			return sample;
 		}
 	};
 	
-	vector<MyStruct> myVector;
+	vector<Layer> layers;
 
-	void AddToVector(float* array)
+	void AddToLayers(float* input)
 	{
-		myVector.emplace_back();
-		myVector.back().SetDynamicArray(array);
+		layers.emplace_back();
+		cout << "Action:" << layers.back().FeedForward(this, input) << '\n';;
 	}
 
-	void RemoveFromVector() { myVector.pop_back(); }
-	void ClearVector() { myVector.clear(); }
-	float* GetFromVector(uint32_t index) { return myVector[index].dynamicArray; }
+	void RemoveFromVector() { layers.pop_back(); }
+	void ClearVector() { layers.clear(); }
+	void Reset(Species* species)
+	{
+		this->species = species;
+		ClearVector();
+	}
 };
 
 int main()
 {
+	Species species;
 	Agent agent;
-	float* array = new float[GlobalVars::ACTIONS];
-	for (int i = 0; i < GlobalVars::ACTIONS; i++)
-		array[i] = GlobalVars::random.Rfloat();
-	agent.AddToVector(array);
-	agent.myVector[0].PrintDynamicArray();
-	delete[] array;
-	
-	float* array2 = agent.GetFromVector(0);
-	for (int i = 0; i < GlobalVars::ACTIONS; i++)
-		cout << array2[i] << ' ';
-	cout << '\n';
-	
-	agent.RemoveFromVector();
+	agent.Reset(&species);
 
-	for (int i = 0; i < GlobalVars::ACTIONS; i++)
-		cout << array2[i] << ' ';
-	cout << '\n';
-
-	array = new float[GlobalVars::ACTIONS];
-	for (int j = 0; j < 10; j++)
-	{
-		for (int i = 0; i < GlobalVars::ACTIONS; i++)
-			array[i] = GlobalVars::random.Rfloat();
-		agent.AddToVector(array);
-	}
-	delete[] array;
-
-	array2 = agent.GetFromVector(5);
+	float* input = new float[GlobalVars::INPUT];
+	for (uint32_t counter = GlobalVars::INPUT; counter--;)
+		input[counter] = GlobalVars::random.Rfloat(-1.0f, 1.0f);
 	
-	for (int i = 0; i < GlobalVars::ACTIONS; i++)
-		cout << array2[i] << ' ';
-	cout << '\n';
-	
-	agent.ClearVector();
-	
-	for (int i = 0; i < GlobalVars::ACTIONS; i++)
-		cout << array2[i] << ' ';
-	cout << '\n';
+	for (uint32_t counter = 10; counter--;)
+		agent.AddToLayers(input);
 
 	return 0;
 }
