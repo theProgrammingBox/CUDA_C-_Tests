@@ -99,30 +99,85 @@ private:
 namespace GlobalVars
 {
 	Random random(Random::MakeSeed(0));
-	constexpr uint32_t ACTIONS = 3;
+	constexpr uint32_t INPUT = 10;
+	constexpr uint32_t ACTIONS = 9;
 }
 
-struct MyStruct
+class Agent
 {
-	int* dynamicArray;
+public:
+	static constexpr uint32_t HIDDEN = 16;
 	
-	MyStruct() : dynamicArray(nullptr) {}
-	MyStruct(MyStruct&& other) noexcept : dynamicArray(other.dynamicArray)
-	{ other.dynamicArray = nullptr; }
-	~MyStruct() { delete[] dynamicArray; }
+	struct MyStruct
+	{
+		float* dynamicArray;
+
+		MyStruct() : dynamicArray(new float[GlobalVars::ACTIONS]) {}
+		MyStruct(MyStruct&& other) noexcept : dynamicArray(other.dynamicArray) { other.dynamicArray = nullptr; }
+		~MyStruct() { delete[] dynamicArray; }
+		void SetDynamicArray(float* array) { memcpy(dynamicArray, array, GlobalVars::ACTIONS * sizeof(float)); }
+		void PrintDynamicArray() const
+		{
+			for (int i = 0; i < GlobalVars::ACTIONS; i++)
+				cout << dynamicArray[i] << ' ';
+			cout << '\n';
+		}
+	};
+	
+	vector<MyStruct> myVector;
+
+	void AddToVector(float* array)
+	{
+		myVector.emplace_back();
+		myVector.back().SetDynamicArray(array);
+	}
+
+	void RemoveFromVector() { myVector.pop_back(); }
+	void ClearVector() { myVector.clear(); }
+	float* GetFromVector(uint32_t index) { return myVector[index].dynamicArray; }
 };
 
 int main()
 {
-	vector<MyStruct> myVector;
-	int arr[GlobalVars::ACTIONS];
+	Agent agent;
+	float* array = new float[GlobalVars::ACTIONS];
 	for (int i = 0; i < GlobalVars::ACTIONS; i++)
-		arr[i] = GlobalVars::random.Rfloat();
+		array[i] = GlobalVars::random.Rfloat();
+	agent.AddToVector(array);
+	agent.myVector[0].PrintDynamicArray();
+	delete[] array;
+	
+	float* array2 = agent.GetFromVector(0);
+	for (int i = 0; i < GlobalVars::ACTIONS; i++)
+		cout << array2[i] << ' ';
+	cout << '\n';
+	
+	agent.RemoveFromVector();
 
-	for (int i = 0; i < 10; i++)
+	for (int i = 0; i < GlobalVars::ACTIONS; i++)
+		cout << array2[i] << ' ';
+	cout << '\n';
+
+	array = new float[GlobalVars::ACTIONS];
+	for (int j = 0; j < 10; j++)
 	{
-		myVector.push_back(MyStruct());
+		for (int i = 0; i < GlobalVars::ACTIONS; i++)
+			array[i] = GlobalVars::random.Rfloat();
+		agent.AddToVector(array);
 	}
+	delete[] array;
+
+	array2 = agent.GetFromVector(5);
+	
+	for (int i = 0; i < GlobalVars::ACTIONS; i++)
+		cout << array2[i] << ' ';
+	cout << '\n';
+	
+	agent.ClearVector();
+	
+	for (int i = 0; i < GlobalVars::ACTIONS; i++)
+		cout << array2[i] << ' ';
+	cout << '\n';
 
 	return 0;
 }
