@@ -100,16 +100,14 @@ namespace GlobalVars
 {
 	Random random(Random::MakeSeed(0));
 	constexpr uint32_t ACTIONS = 3;
-	constexpr uint32_t NUM = 5;
 }
 
 struct MyStruct
 {
 	int* dynamicArray;
-	int arraySize;
 	
-	MyStruct(int size) : arraySize(size), dynamicArray(new int[size]) {}
-	MyStruct(MyStruct&& other) noexcept : arraySize(other.arraySize), dynamicArray(other.dynamicArray)
+	MyStruct() : dynamicArray(nullptr) {}
+	MyStruct(MyStruct&& other) noexcept : dynamicArray(other.dynamicArray)
 	{ other.dynamicArray = nullptr; }
 	~MyStruct() { delete[] dynamicArray; }
 };
@@ -117,18 +115,14 @@ struct MyStruct
 int main()
 {
 	vector<MyStruct> myVector;
-	
-	int size = 5;
-	int* arr = new int[size];
-	for (int i = 0; i < size; i++) {
-		arr[i] = i;
+	int arr[GlobalVars::ACTIONS];
+	for (int i = 0; i < GlobalVars::ACTIONS; i++)
+		arr[i] = GlobalVars::random.Rfloat();
+
+	for (int i = 0; i < 10; i++)
+	{
+		myVector.push_back(MyStruct());
 	}
-
-	MyStruct newStruct(size);
-	newStruct.dynamicArray = arr;
-	newStruct.arraySize = size;
-
-	myVector.push_back(std::move(newStruct));
 
 	return 0;
 }
