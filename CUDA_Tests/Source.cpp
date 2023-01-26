@@ -124,6 +124,20 @@ void cpuCLU(float* inputMatrix, float* outputMatrix, uint32_t size)
 		outputMatrix[counter] = min(1.0f, max(-1.0f, inputMatrix[counter]));
 }
 
+const static void cpuCLUGradient(float* inputMatrix, float* gradientMatrix, float* outputMatrix, uint32_t size) {
+	float input;
+	float gradient;
+	bool greaterZero;
+	for (size_t counter = size; counter--;)
+	{
+		input = inputMatrix[counter];
+		gradient = gradientMatrix[counter];
+		greaterZero = gradient > 0;
+		gradient = (greaterZero << 1) - 1;
+		outputMatrix[counter] = (((input >= 1) ^ greaterZero) || ((input > -1) ^ greaterZero)) * gradient;
+	}
+}
+
 void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
 {
 	float sum = 0;
@@ -135,6 +149,17 @@ void cpuSoftmax(float* inputMatrix, float* outputMatrix, uint32_t size)
 	sum = 1.0f / sum;
 	for (uint32_t counter = size; counter--;)
 		outputMatrix[counter] *= sum;
+}
+
+void cpuSoftmaxGradient(float* outputMatrix, bool isSurvivor, uint32_t action, float* resultMatrix, uint32_t size)
+{
+	int agentGradient = (isSurvivor << 1) - 1;
+	/*float sampledProbability = outputMatrix[action];
+	for (uint32_t counter = size; counter--;)
+			resultMatrix[counter] = agentGradient * outputMatrix[counter] * ((counter == action) - sampledProbability);
+	*/
+	for (uint32_t counter = size; counter--;)
+		resultMatrix[counter] = (((counter == action) << 1) - 1) * agentGradient;
 }
 
 namespace GlobalVars
@@ -150,17 +175,34 @@ public:
 	static constexpr uint32_t HIDDEN = 16;
 	float* weight1;
 	float* weight2;
+	float* weight1Gradient;
+	float* weight2Gradient;
 
 	Species()
 	{
 		weight1 = new float[HIDDEN * GlobalVars::INPUT];
 		weight2 = new float[GlobalVars::ACTIONS * HIDDEN];
+		weight1Gradient = new float[HIDDEN * GlobalVars::INPUT];
+		weight2Gradient = new float[GlobalVars::ACTIONS * HIDDEN];
+
+		for (uint32_t counter = HIDDEN * GlobalVars::INPUT; counter--;)
+			weight1[counter] = GlobalVars::random.Rfloat(-1, 1);
+		for (uint32_t counter = GlobalVars::ACTIONS * HIDDEN; counter--;)
+			weight2[counter] = GlobalVars::random.Rfloat(-1, 1);
 	}
 
 	~Species()
 	{
 		delete[] weight1;
 		delete[] weight2;
+		delete[] weight1Gradient;
+		delete[] weight2Gradient;
+	}
+
+	void Reset()
+	{
+		memset(weight1Gradient, 0, HIDDEN * GlobalVars::INPUT * sizeof(float));
+		memset(weight2Gradient, 0, GlobalVars::ACTIONS * HIDDEN * sizeof(float));
 	}
 };
 
@@ -178,6 +220,7 @@ public:
 		float* hiddenMatrix;
 		float* outputMatrix;
 		float* actionMatrix;
+		uint32_t action;
 
 		Layer() : inputMatrix(new float[GlobalVars::INPUT]), hiddenMatrix(new float[Species::HIDDEN]), outputMatrix(new float[GlobalVars::ACTIONS]), actionMatrix(new float[GlobalVars::ACTIONS]) {}
 		
@@ -208,15 +251,15 @@ public:
 			cpuSoftmax(outputMatrix, actionMatrix, GlobalVars::ACTIONS);
 			
 			float number = GlobalVars::random.Rfloat(0.0f, 1.0f);
-			uint32_t sample = 0;
+			action = 0;
 			while (true)
 			{
-				number -= actionMatrix[sample];
+				number -= actionMatrix[action];
 				if (number < 0) break;
-				sample++;
-				sample -= (sample == GlobalVars::ACTIONS) * GlobalVars::ACTIONS;
+				action++;
+				action -= (action == GlobalVars::ACTIONS) * GlobalVars::ACTIONS;
 			}
-			return sample;
+			return action;
 		}
 	};
 	
@@ -235,12 +278,27 @@ public:
 		this->species = species;
 		ClearVector();
 	}
+
+	void BackPropagate(bool isWinner)
+	{
+		for (auto& layer : layers)
+		{
+			cpuSoftmaxGradient(layer.actionMatrix, isWinner, layer.action, layer.actionMatrix, GlobalVars::ACTIONS);
+			cpuCLUGradient(layer.outputMatrix, layer.actionMatrix, layer.outputMatrix, GlobalVars::ACTIONS);
+			cpuSgemmStridedBatched(true, false, Species::HIDDEN, 1, GlobalVars::ACTIONS, &ONE, species->weight2, GlobalVars::ACTIONS, 0, layer.outputMatrix, GlobalVars::ACTIONS, 0, &ZERO, layer.hiddenMatrix, Species::HIDDEN, 0, 1);
+			cpuCLUGradient(layer.hiddenMatrix, layer.hiddenMatrix, layer.hiddenMatrix, Species::HIDDEN);
+			cpuSgemmStridedBatched(true, false, GlobalVars::INPUT, 1, Species::HIDDEN, &ONE, species->weight1, Species::HIDDEN, 0, layer.hiddenMatrix, Species::HIDDEN, 0, &ZERO, layer.inputMatrix, GlobalVars::INPUT, 0, 1);
+			
+			//
+		}
+	}
 };
 
 int main()
 {
 	Species species;
 	Agent agent;
+	species.Reset();
 	agent.Reset(&species);
 
 	float* input = new float[GlobalVars::INPUT];
@@ -254,6 +312,8 @@ int main()
 	
 	for (uint32_t counter = 10; counter--;)
 		agent.AddToLayers(input);
+
+	agent.BackPropagate(true);
 
 	return 0;
 }
