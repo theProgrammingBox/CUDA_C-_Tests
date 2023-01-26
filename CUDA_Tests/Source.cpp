@@ -105,13 +105,12 @@ namespace GlobalVars
 
 struct MyStruct
 {
-	int x;
 	int* dynamicArray;
 	int arraySize;
 	
-	MyStruct(int size) : x(0), arraySize(size), dynamicArray(new int[size]) {}
-	MyStruct(const MyStruct& other) : x(other.x), arraySize(other.arraySize), dynamicArray(new int[other.arraySize])
-	{ std::copy(other.dynamicArray, other.dynamicArray + arraySize, dynamicArray); }
+	MyStruct(int size) : arraySize(size), dynamicArray(new int[size]) {}
+	MyStruct(MyStruct&& other) noexcept : arraySize(other.arraySize), dynamicArray(other.dynamicArray)
+	{ other.dynamicArray = nullptr; }
 	~MyStruct() { delete[] dynamicArray; }
 };
 
@@ -126,11 +125,10 @@ int main()
 	}
 
 	MyStruct newStruct(size);
-	newStruct.x = 10;
 	newStruct.dynamicArray = arr;
 	newStruct.arraySize = size;
 
-	myVector.push_back(newStruct);
+	myVector.push_back(std::move(newStruct));
 
 	return 0;
 }
