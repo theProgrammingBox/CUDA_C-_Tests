@@ -1,26 +1,12 @@
 #include <chrono>
 #include <iostream>
-#include <vector>
-#include <algorithm>
-#include <math.h>
-#include <fstream>
 
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 using std::chrono::microseconds;
-using std::cout;
-using std::exp;
-using std::fabs;
-using std::sqrt;
-using std::min;
 using std::max;
-using std::ofstream;
-
-/*
-VANILLA IMPORTANT LESSONS
-1. Leaky relu is the best compared to tahn and relu
-*/
+using std::cout;
 
 class Random
 {
@@ -111,10 +97,34 @@ void SimpleMatrixInit(uint32_t rows, uint32_t cols, float* arr) {
 	float y = 0.0f;
 	for (uint32_t step = maxSteps; step--;)
 	{
-		arr[uint32_t(y) * cols + uint32_t(x)] = (GlobalVars::random.Ruint32() & 1 << 1) - 1.0f;
+		arr[uint32_t(y) * cols + uint32_t(x)] = (GlobalVars::random.Ruint32() & 1 << 1) - 1.0f + GlobalVars::random.Rfloat(-0.1f, 0.1f);
 		x += stepx;
 		y += stepy;
 	}
+}
+
+void PrintMatrixFast(uint32_t rows, uint32_t cols, float* arr) {
+	for (uint32_t i = 0; i < rows; i++)
+	{
+		for (uint32_t j = 0; j < cols; j++)
+		{
+			printf("%7.4f ", arr[i * cols + j]);
+		}
+		printf("\n");
+	}
+	printf("\n");
+}
+
+void PrintMatrixSlow(uint32_t rows, uint32_t cols, float* arr) {
+	for (uint32_t i = 0; i < rows; i++)
+	{
+		for (uint32_t j = 0; j < cols; j++)
+		{
+			cout << arr[i * cols + j] << ' ';
+		}
+		cout << '\n';
+	}
+	cout << '\n';
 }
 
 int main()
@@ -125,16 +135,19 @@ int main()
 	float matrix[rows * cols];
 	SimpleMatrixInit(rows, cols, matrix);
 	
-	// print matrix
-	for (uint32_t i = 0; i < rows; i++)
-	{
-		for (uint32_t j = 0; j < cols; j++)
-		{
-			cout << matrix[i * cols + j] << ' ';
-		}
-		cout << '\n';
-	}
-	cout << '\n';
+	auto start = high_resolution_clock::now();
+	for (uint32_t counter = 4; counter--;)
+		PrintMatrixSlow(rows, cols, matrix);
+	auto stop = high_resolution_clock::now();
+	auto duration = duration_cast<microseconds>(stop - start);
+	cout << "Fast: " << duration.count() << " microseconds\n";
+	
+	start = high_resolution_clock::now();
+	for (uint32_t counter = 4; counter--;)
+		PrintMatrixFast(rows, cols, matrix);
+	stop = high_resolution_clock::now();
+	duration = duration_cast<microseconds>(stop - start);
+	cout << "Slow: " << duration.count() << " microseconds\n";
 	
 	return 0;
 }
