@@ -137,14 +137,14 @@ int main()
 	
 	auto start = high_resolution_clock::now();
 	for (uint32_t counter = 4; counter--;)
-		PrintMatrixSlow(rows, cols, matrix);
+		PrintMatrixFast(rows, cols, matrix);
 	auto stop = high_resolution_clock::now();
 	auto duration = duration_cast<microseconds>(stop - start);
 	cout << "Fast: " << duration.count() << " microseconds\n";
 	
 	start = high_resolution_clock::now();
 	for (uint32_t counter = 4; counter--;)
-		PrintMatrixFast(rows, cols, matrix);
+		PrintMatrixSlow(rows, cols, matrix);
 	stop = high_resolution_clock::now();
 	duration = duration_cast<microseconds>(stop - start);
 	cout << "Slow: " << duration.count() << " microseconds\n";
