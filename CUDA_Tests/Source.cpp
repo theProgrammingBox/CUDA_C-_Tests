@@ -1,5 +1,3 @@
-//#include <cublas_v2.h>
-//#include <curand.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -7,6 +5,10 @@
 #include <math.h>
 #include <fstream>
 
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::nanoseconds;
+using std::chrono::microseconds;
 using std::cout;
 using std::exp;
 using std::fabs;
@@ -15,10 +17,10 @@ using std::min;
 using std::max;
 using std::ofstream;
 
-using std::chrono::high_resolution_clock;
-using std::chrono::duration_cast;
-using std::chrono::nanoseconds;
-using std::chrono::microseconds;
+/*
+VANILLA IMPORTANT LESSONS
+1. Leaky relu is the best compared to tahn and relu
+*/
 
 class Random
 {
@@ -100,42 +102,39 @@ namespace GlobalVars
 	Random random(Random::MakeSeed(0));
 }
 
+void SimpleMatrixInit(uint32_t rows, uint32_t cols, float* arr) {
+	memset(arr, 0, rows * cols * sizeof(float));
+	uint32_t maxSteps = max(rows, cols);
+	float stepx = (float)cols / maxSteps;
+	float stepy = (float)rows / maxSteps;
+	float x = 0.0f;
+	float y = 0.0f;
+	for (uint32_t step = maxSteps; step--;)
+	{
+		arr[uint32_t(y) * cols + uint32_t(x)] = (GlobalVars::random.Ruint32() & 1 << 1) - 1.0f;
+		x += stepx;
+		y += stepy;
+	}
+}
+
 int main()
 {
-	const uint32_t size = 100000;
-	float arr[size];
+	const uint32_t rows = 13;
+	const uint32_t cols = 11;
 	
-	for (uint32_t counter = size; counter--;)
-		arr[counter] = GlobalVars::random.Rfloat(-1, 1);
+	float matrix[rows * cols];
+	SimpleMatrixInit(rows, cols, matrix);
 	
-	//start timer
-	auto start = high_resolution_clock::now();
-
-	for (uint32_t counter = size; counter--;)
+	// print matrix
+	for (uint32_t i = 0; i < rows; i++)
 	{
-		float y = ((*(int32_t*)(arr + counter) & 0x80000000) >> 31) * 0.9f + 0.1f;
-		//cout << "x: " << arr[counter] << " y: " << y << "\n";
+		for (uint32_t j = 0; j < cols; j++)
+		{
+			cout << matrix[i * cols + j] << ' ';
+		}
+		cout << '\n';
 	}
-
-	//end timer
-	auto end = high_resolution_clock::now();
-	auto duration = duration_cast<microseconds>(end - start);
-	cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl;
-	
-	// start timer
-	start = high_resolution_clock::now();
-	
-	for (uint32_t counter = size; counter--;)
-	{
-		float y = (arr[counter] < 0) * 0.9f + 0.1f;
-		//cout << "x: " << arr[counter] << " y: " << y << "\n";
-	}
-
-	// end timer
-	end = high_resolution_clock::now();
-	duration = duration_cast<microseconds>(end - start);
-	cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl;
-	
+	cout << '\n';
 	
 	return 0;
 }
