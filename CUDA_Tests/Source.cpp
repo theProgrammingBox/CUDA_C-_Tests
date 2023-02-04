@@ -1,3 +1,5 @@
+//#include <cublas_v2.h>
+//#include <curand.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -5,10 +7,6 @@
 #include <math.h>
 #include <fstream>
 
-using std::chrono::high_resolution_clock;
-using std::chrono::duration_cast;
-using std::chrono::nanoseconds;
-using std::chrono::microseconds;
 using std::cout;
 using std::exp;
 using std::fabs;
@@ -16,6 +14,11 @@ using std::sqrt;
 using std::min;
 using std::max;
 using std::ofstream;
+
+using std::chrono::high_resolution_clock;
+using std::chrono::duration_cast;
+using std::chrono::nanoseconds;
+using std::chrono::microseconds;
 
 class Random
 {
