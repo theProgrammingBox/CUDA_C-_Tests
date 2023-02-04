@@ -1,5 +1,3 @@
-//#include <cublas_v2.h>
-//#include <curand.h>
 #include <chrono>
 #include <iostream>
 #include <vector>
@@ -7,18 +5,17 @@
 #include <math.h>
 #include <fstream>
 
-using std::cout;
-using std::vector;
-using std::sort;
-using std::exp;
-using std::min;
-using std::max;
-using std::ofstream;
-
 using std::chrono::high_resolution_clock;
 using std::chrono::duration_cast;
 using std::chrono::nanoseconds;
 using std::chrono::microseconds;
+using std::cout;
+using std::exp;
+using std::fabs;
+using std::sqrt;
+using std::min;
+using std::max;
+using std::ofstream;
 
 class Random
 {
@@ -98,71 +95,44 @@ private:
 namespace GlobalVars
 {
 	Random random(Random::MakeSeed(0));
-	constexpr uint32_t ACTIONS = 3;
-}
-
-void cpuGenerateUniform(float* matrix, uint32_t size, float min, float max)
-{
-	for (uint32_t counter = size; counter--;)
-		matrix[counter] = GlobalVars::random.Rfloat(min, max);
-}
-
-const static void cpuClippedLinearUnit(float* inputMatrix, float* outputMatrix, uint32_t size)
-{
-	for (size_t counter = size; counter--;)
-		outputMatrix[counter] = min(1.0f, max(-1.0f, inputMatrix[counter]));
-}
-
-const static void cpuClippedLinearUnitGradient(float* inputMatrix, float* gradientMatrix, float* outputMatrix, uint32_t size) {
-	float input;
-	float gradient;
-	bool greaterZero;
-	for (size_t counter = size; counter--;)
-	{
-		input = inputMatrix[counter];
-		gradient = gradientMatrix[counter];
-		greaterZero = gradient > 0;
-		gradient = (greaterZero << 1) - 1;
-		outputMatrix[counter] = (((input >= 1) ^ greaterZero) || ((input > -1) ^ greaterZero)) * gradient;
-	}
 }
 
 int main()
 {
-	const uint32_t size = 10;
+	const uint32_t size = 100000;
+	float arr[size];
+	
+	for (uint32_t counter = size; counter--;)
+		arr[counter] = GlobalVars::random.Rfloat(-1, 1);
+	
+	//start timer
+	auto start = high_resolution_clock::now();
 
-	float* inputMatrix = new float[size];
-	float* outputMatrix = new float[size];
-	float* gradientMatrix = new float[size];
-	float* gradientOutputMatrix = new float[size];
-	
-	cpuGenerateUniform(inputMatrix, size, -2.0f, 2.0f);
-	
-	// print input matrix
-	for (uint32_t counter = 0; counter < size; counter++)
-		cout << inputMatrix[counter] << ' ';
-	cout << '\n';
-	
-	cpuClippedLinearUnit(inputMatrix, outputMatrix, size);
-	
-	// print output matrix
-	for (uint32_t counter = 0; counter < size; counter++)
-		cout << outputMatrix[counter] << ' ';
-	cout << '\n';
+	for (uint32_t counter = size; counter--;)
+	{
+		float y = ((*(int32_t*)(arr + counter) & 0x80000000) >> 31) * 0.9f + 0.1f;
+		//cout << "x: " << arr[counter] << " y: " << y << "\n";
+	}
 
-	cpuGenerateUniform(gradientMatrix, size, -1.0f, 1.0f);
+	//end timer
+	auto end = high_resolution_clock::now();
+	auto duration = duration_cast<microseconds>(end - start);
+	cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl;
 	
-	// print gradient matrix
-	for (uint32_t counter = 0; counter < size; counter++)
-		cout << gradientMatrix[counter] << ' ';
-	cout << '\n';
+	// start timer
+	start = high_resolution_clock::now();
 	
-	cpuClippedLinearUnitGradient(outputMatrix, gradientMatrix, gradientOutputMatrix, size);
-	
-	// print gradient output matrix
-	for (uint32_t counter = 0; counter < size; counter++)
-		cout << gradientOutputMatrix[counter] << ' ';
-	cout << '\n';
+	for (uint32_t counter = size; counter--;)
+	{
+		float y = (arr[counter] < 0) * 0.9f + 0.1f;
+		//cout << "x: " << arr[counter] << " y: " << y << "\n";
+	}
 
+	// end timer
+	end = high_resolution_clock::now();
+	duration = duration_cast<microseconds>(end - start);
+	cout << "Time taken by function: " << duration.count() << " microseconds" << std::endl;
+	
+	
 	return 0;
 }
