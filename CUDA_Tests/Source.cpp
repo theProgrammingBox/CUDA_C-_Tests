@@ -103,7 +103,9 @@ void SimpleMatrixInit(uint32_t rows, uint32_t cols, float* arr) {
 	}
 }
 
-void PrintMatrixFast(uint32_t rows, uint32_t cols, float* arr) {
+void PrintMatrixFast(uint32_t rows, uint32_t cols, float* arr, const char* label = "") {
+	if (label[0] != '\0')
+		printf("%s\n", label);
 	for (uint32_t i = 0; i < rows; i++)
 	{
 		for (uint32_t j = 0; j < cols; j++)
@@ -115,39 +117,10 @@ void PrintMatrixFast(uint32_t rows, uint32_t cols, float* arr) {
 	printf("\n");
 }
 
-void PrintMatrixSlow(uint32_t rows, uint32_t cols, float* arr) {
-	for (uint32_t i = 0; i < rows; i++)
-	{
-		for (uint32_t j = 0; j < cols; j++)
-		{
-			cout << arr[i * cols + j] << ' ';
-		}
-		cout << '\n';
-	}
-	cout << '\n';
-}
-
 int main()
 {
-	const uint32_t rows = 13;
-	const uint32_t cols = 11;
-	
-	float matrix[rows * cols];
-	SimpleMatrixInit(rows, cols, matrix);
-	
-	auto start = high_resolution_clock::now();
-	for (uint32_t counter = 4; counter--;)
-		PrintMatrixFast(rows, cols, matrix);
-	auto stop = high_resolution_clock::now();
-	auto duration = duration_cast<microseconds>(stop - start);
-	cout << "Fast: " << duration.count() << " microseconds\n";
-	
-	start = high_resolution_clock::now();
-	for (uint32_t counter = 4; counter--;)
-		PrintMatrixSlow(rows, cols, matrix);
-	stop = high_resolution_clock::now();
-	duration = duration_cast<microseconds>(stop - start);
-	cout << "Slow: " << duration.count() << " microseconds\n";
+	float arr[3][3] = { {1.23456, 2.34567, 3.45678}, {4.56789, 5.67890, 6.78901}, {7.89012, 8.90123, 9.01234} };
+	PrintMatrixFast(3, 3, &arr[0][0]);
 	
 	return 0;
 }
