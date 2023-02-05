@@ -103,24 +103,57 @@ void SimpleMatrixInit(uint32_t rows, uint32_t cols, float* arr) {
 	}
 }
 
-void PrintMatrixFast(uint32_t rows, uint32_t cols, float* arr, const char* label = "") {
+void PrintMatrix(uint32_t rows, uint32_t cols, float* arr, const char* label = "") {
 	if (label[0] != '\0')
-		printf("%s\n", label);
+		printf("%s:\n", label);
 	for (uint32_t i = 0; i < rows; i++)
 	{
 		for (uint32_t j = 0; j < cols; j++)
 		{
-			printf("%7.4f ", arr[i * cols + j]);
+			printf("%8.2f ", arr[i * cols + j]);
 		}
 		printf("\n");
 	}
 	printf("\n");
 }
 
+#include <fstream>
+
+using std::ofstream;
+using std::ifstream;
+using std::ios;
+
 int main()
 {
-	float arr[3][3] = { {1.23456, 2.34567, 3.45678}, {4.56789, 5.67890, 6.78901}, {7.89012, 8.90123, 9.01234} };
-	PrintMatrixFast(3, 3, &arr[0][0]);
-	
+	const uint32_t rows = 13;
+	const uint32_t cols = 11;
+
+	float matrix[rows * cols];
+	if (false)
+	{
+		SimpleMatrixInit(rows, cols, matrix);
+		matrix[10] = -1000.4235f;
+		PrintMatrix(rows, cols, matrix);
+		
+		auto start = std::chrono::high_resolution_clock::now();
+		ofstream file2("data.txt", ios::out | ios::binary);
+		file2.write((char*)matrix, rows * cols * sizeof(float));
+		file2.close();
+		auto stop = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+		printf("Time taken by function 1: %lld microseconds\n", duration.count());
+	}
+	else
+	{
+		auto start = std::chrono::high_resolution_clock::now();
+		ifstream file("data.txt", ios::in | ios::binary);
+		file.read((char*)matrix, rows * cols * sizeof(float));
+		file.close();
+		auto stop = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+		PrintMatrix(rows, cols, matrix);
+		printf("Time taken by function 2: %lld microseconds\n", duration.count());
+	}
+
 	return 0;
 }
