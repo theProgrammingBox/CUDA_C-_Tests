@@ -8,6 +8,13 @@ using std::chrono::microseconds;
 using std::max;
 using std::cout;
 
+/*
+TODO:
+1. test if if is faster then for loop given a bool. (swap function)
+2. test speed of division vs multiplication
+3. implement cpuNormDotProduct and its gradient
+*/
+
 class Random
 {
 public:
