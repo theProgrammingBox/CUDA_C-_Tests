@@ -90,24 +90,15 @@ private:
 	static uint32_t microsecond() { return duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count(); }
 };
 
-namespace GlobalVars
+namespace GLOBAL
 {
 	Random random(Random::MakeSeed(0));
 }
 
-void SimpleMatrixInit(uint32_t rows, uint32_t cols, float* arr) {
-	memset(arr, 0, rows * cols * sizeof(float));
-	uint32_t maxSteps = max(rows, cols);
-	float stepx = (float)cols / maxSteps;
-	float stepy = (float)rows / maxSteps;
-	float x = 0.0f;
-	float y = 0.0f;
-	for (uint32_t step = maxSteps; step--;)
-	{
-		arr[uint32_t(y) * cols + uint32_t(x)] = (GlobalVars::random.Ruint32() & 1 << 1) - 1.0f + GlobalVars::random.Rfloat(-0.1f, 0.1f);
-		x += stepx;
-		y += stepy;
-	}
+void cpuGenerateUniform(float* matrix, uint32_t size, float min = 0, float max = 1)
+{
+	for (uint32_t counter = size; counter--;)
+		matrix[counter] = GLOBAL::random.Rfloat(min, max);
 }
 
 void PrintMatrix(uint32_t rows, uint32_t cols, float* arr, const char* label = "") {
@@ -124,6 +115,56 @@ void PrintMatrix(uint32_t rows, uint32_t cols, float* arr, const char* label = "
 	printf("\n");
 }
 
+float invSqrt(float number)
+{
+	long i = 0x5F1FFFF9 - (*(long*)&number >> 1);
+	float tmp = *(float*)&i;
+	return tmp * 0.703952253f * (2.38924456f - number * tmp * tmp);
+}
+
+void cpuNormDotProduct(uint32_t size, float* vec1, float* vec2, float* result) {
+	float sum1 = 0.0f;
+	float sum2 = 0.0f;
+	float dot = 0.0f;
+	for (uint32_t i = size; i--;)
+	{
+		sum1 += vec1[i] * vec1[i];
+		sum2 += vec2[i] * vec2[i];
+		dot += vec1[i] * vec2[i];
+	}
+	*result = dot * invSqrt(sum1 * sum2);
+}
+
+void cpuNormDotProductDerivitive(uint32_t size, float* vec1, float* vec2, float* vec1Gradient, float* vec2Gradient) {
+	float sum1 = 0.0f;
+	float sum2 = 0.0f;
+	float dot = 0.0f;
+	for (uint32_t i = size; i--;)
+	{
+		sum1 += vec1[i] * vec1[i];
+		sum2 += vec2[i] * vec2[i];
+		dot += vec1[i] * vec2[i];
+	}
+	float* vecOne = vec1;
+	float* vecTwo = vec2;
+	float* vecOneGradient = vec1Gradient;
+	float* vecTwoGradient = vec2Gradient;
+	float* total1 = &sum1;
+	float* total2 = &sum2;
+	
+	for (uint32_t i = 2; i--;)
+	{
+		float invSqrtTotal = invSqrt(sum1 * sum2 * *total1 * *total1);
+		for (uint32_t j = size; j--;)
+		{
+			vecOneGradient[j] = (vecTwo[j] * (*total1 - vecOne[j] * vecOne[j]) + vecOne[j] * (vecOne[j] * vecTwo[j] - dot)) * invSqrtTotal;
+		}
+		std::swap(vecOne, vecTwo);
+		std::swap(vecOneGradient, vecTwoGradient);
+		std::swap(total1, total2);
+	}
+}
+
 #include <fstream>
 
 using std::ofstream;
@@ -132,35 +173,25 @@ using std::ios;
 
 int main()
 {
-	const uint32_t rows = 13;
-	const uint32_t cols = 11;
+	uint32_t rows = 2;
+	float* arr1 = new float[rows];
+	float* arr2 = new float[rows];
+	float* arr1Gradient = new float[rows];
+	float* arr2Gradient = new float[rows];
+	
+	cpuGenerateUniform(arr1, rows, -1, 1);
+	cpuGenerateUniform(arr2, rows, -1, 1);
 
-	float matrix[rows * cols];
-	if (false)
-	{
-		SimpleMatrixInit(rows, cols, matrix);
-		matrix[10] = -1000.4235f;
-		PrintMatrix(rows, cols, matrix);
-		
-		auto start = std::chrono::high_resolution_clock::now();
-		ofstream file2("data.txt", ios::out | ios::binary);
-		file2.write((char*)matrix, rows * cols * sizeof(float));
-		file2.close();
-		auto stop = std::chrono::high_resolution_clock::now();
-		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-		printf("Time taken by function 1: %lld microseconds\n", duration.count());
-	}
-	else
-	{
-		auto start = std::chrono::high_resolution_clock::now();
-		ifstream file("data.txt", ios::in | ios::binary);
-		file.read((char*)matrix, rows * cols * sizeof(float));
-		file.close();
-		auto stop = std::chrono::high_resolution_clock::now();
-		auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
-		PrintMatrix(rows, cols, matrix);
-		printf("Time taken by function 2: %lld microseconds\n", duration.count());
-	}
+	PrintMatrix(rows, 1, arr1, "arr1");
+	PrintMatrix(rows, 1, arr2, "arr2");
+	
+	float result = 0.0f;
+	cpuNormDotProduct(rows, arr1, arr2, &result);
+	printf("result: %f\n", result);
+
+	cpuNormDotProductDerivitive(rows, arr1, arr2, arr1Gradient, arr2Gradient);
+	PrintMatrix(rows, 1, arr1Gradient, "arr1Gradient");
+	PrintMatrix(rows, 1, arr2Gradient, "arr2Gradient");
 
 	return 0;
 }
