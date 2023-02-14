@@ -93,12 +93,40 @@ private:
 namespace GLOBAL
 {
 	Random random(Random::MakeSeed(0));
+	constexpr float ONEF = 1.0f;
+	constexpr float ZEROF = 0.0f;
 }
 
 void cpuGenerateUniform(float* matrix, uint32_t size, float min = 0, float max = 1)
 {
 	for (uint32_t counter = size; counter--;)
 		matrix[counter] = GLOBAL::random.Rfloat(min, max);
+}
+
+void cpuSgemmStridedBatched(
+	bool transB, bool transA,
+	int CCols, int CRows, int AColsBRows,
+	const float* alpha,
+	float* B, int ColsB, int SizeB,
+	float* A, int ColsA, int SizeA,
+	const float* beta,
+	float* C, int ColsC, int SizeC,
+	int batchCount)
+{
+	for (int b = batchCount; b--;)
+	{
+		for (int m = CCols; m--;)
+			for (int n = CRows; n--;)
+			{
+				float sum = 0;
+				for (int k = AColsBRows; k--;)
+					sum += (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]);
+				C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
+			}
+		A += SizeA;
+		B += SizeB;
+		C += SizeC;
+	}
 }
 
 void PrintMatrix(uint32_t rows, uint32_t cols, float* arr, const char* label = "") {
@@ -123,26 +151,57 @@ float invSqrt(float number)
 }
 
 float cpuNormDot(uint32_t size, float* vec1, float* vec2, float* vec1Gradient, float* vec2Gradient) {
-	float sum1 = 0.0f;
-	float sum2 = 0.0f;
-	float dot = 0.0f;
+	float sum1[1];
+	float sum2[1];
+	float dot[1];
 	float denominator;
-	for (uint32_t i = size; i--;)
+
+	/*for (uint32_t i = size; i--;)
 	{
-		sum1 += vec1[i] * vec1[i];
-		sum2 += vec2[i] * vec2[i];
-		dot += vec1[i] * vec2[i];
-	}
-
-	denominator = invSqrt(sum1 * sum2 * sum1 * sum1);
-	for (uint32_t j = size; j--;)
-		vec1Gradient[j] = (vec2[j] * (sum1 - vec1[j] * vec1[j]) + vec1[j] * (vec1[j] * vec2[j] - dot)) * denominator;
-
-	denominator = invSqrt(sum1 * sum2 * sum2 * sum2);
-	for (uint32_t j = size; j--;)
-		vec2Gradient[j] = (vec1[j] * (sum2 - vec2[j] * vec2[j]) + vec2[j] * (vec2[j] * vec1[j] - dot)) * denominator;
+		*sum1 += vec1[i] * vec1[i];
+		*sum2 += vec2[i] * vec2[i];
+		*dot += vec1[i] * vec2[i];
+	}*/
 	
-	return dot * invSqrt(sum1 * sum2);
+	cpuSgemmStridedBatched(
+		false, false,
+		1, 1, size,
+		&GLOBAL::ONEF,
+		vec1, 1, 0,
+		vec1, size, 0,
+		&GLOBAL::ZEROF,
+		sum1, 1, 0,
+		1);
+
+	cpuSgemmStridedBatched(
+		false, false,
+		1, 1, size,
+		&GLOBAL::ONEF,
+		vec2, 1, 0,
+		vec2, size, 0,
+		&GLOBAL::ZEROF,
+		sum2, 1, 0,
+		1);
+
+	cpuSgemmStridedBatched(
+		false, false,
+		1, 1, size,
+		&GLOBAL::ONEF,
+		vec1, 1, 0,
+		vec2, size, 0,
+		&GLOBAL::ZEROF,
+		dot, 1, 0,
+		1);
+
+	denominator = invSqrt(*sum1 * *sum2 * *sum1 * *sum1);
+	for (uint32_t j = size; j--;)
+		vec1Gradient[j] = (vec2[j] * (*sum1 - vec1[j] * vec1[j]) + vec1[j] * (vec1[j] * vec2[j] - *dot)) * denominator;
+
+	denominator = invSqrt(*sum1 * *sum2 * *sum2 * *sum2);
+	for (uint32_t j = size; j--;)
+		vec2Gradient[j] = (vec1[j] * (*sum2 - vec2[j] * vec2[j]) + vec2[j] * (vec2[j] * vec1[j] - *dot)) * denominator;
+	
+	return *dot * invSqrt(*sum1 * *sum2);
 }
 
 #include <fstream>
