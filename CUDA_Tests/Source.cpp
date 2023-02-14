@@ -122,47 +122,27 @@ float invSqrt(float number)
 	return tmp * 0.703952253f * (2.38924456f - number * tmp * tmp);
 }
 
-void cpuNormDotProduct(uint32_t size, float* vec1, float* vec2, float* result) {
+float cpuNormDot(uint32_t size, float* vec1, float* vec2, float* vec1Gradient, float* vec2Gradient) {
 	float sum1 = 0.0f;
 	float sum2 = 0.0f;
 	float dot = 0.0f;
+	float denominator;
 	for (uint32_t i = size; i--;)
 	{
 		sum1 += vec1[i] * vec1[i];
 		sum2 += vec2[i] * vec2[i];
 		dot += vec1[i] * vec2[i];
 	}
-	*result = dot * invSqrt(sum1 * sum2);
-}
 
-void cpuNormDotProductDerivitive(uint32_t size, float* vec1, float* vec2, float* vec1Gradient, float* vec2Gradient) {
-	float sum1 = 0.0f;
-	float sum2 = 0.0f;
-	float dot = 0.0f;
-	for (uint32_t i = size; i--;)
-	{
-		sum1 += vec1[i] * vec1[i];
-		sum2 += vec2[i] * vec2[i];
-		dot += vec1[i] * vec2[i];
-	}
-	float* vecOne = vec1;
-	float* vecTwo = vec2;
-	float* vecOneGradient = vec1Gradient;
-	float* vecTwoGradient = vec2Gradient;
-	float* total1 = &sum1;
-	float* total2 = &sum2;
+	denominator = invSqrt(sum1 * sum2 * sum1 * sum1);
+	for (uint32_t j = size; j--;)
+		vec1Gradient[j] = (vec2[j] * (sum1 - vec1[j] * vec1[j]) + vec1[j] * (vec1[j] * vec2[j] - dot)) * denominator;
+
+	denominator = invSqrt(sum1 * sum2 * sum2 * sum2);
+	for (uint32_t j = size; j--;)
+		vec2Gradient[j] = (vec1[j] * (sum2 - vec2[j] * vec2[j]) + vec2[j] * (vec2[j] * vec1[j] - dot)) * denominator;
 	
-	for (uint32_t i = 2; i--;)
-	{
-		float invSqrtTotal = invSqrt(sum1 * sum2 * *total1 * *total1);
-		for (uint32_t j = size; j--;)
-		{
-			vecOneGradient[j] = (vecTwo[j] * (*total1 - vecOne[j] * vecOne[j]) + vecOne[j] * (vecOne[j] * vecTwo[j] - dot)) * invSqrtTotal;
-		}
-		std::swap(vecOne, vecTwo);
-		std::swap(vecOneGradient, vecTwoGradient);
-		std::swap(total1, total2);
-	}
+	return dot * invSqrt(sum1 * sum2);
 }
 
 #include <fstream>
@@ -185,11 +165,7 @@ int main()
 	PrintMatrix(rows, 1, arr1, "arr1");
 	PrintMatrix(rows, 1, arr2, "arr2");
 	
-	float result = 0.0f;
-	cpuNormDotProduct(rows, arr1, arr2, &result);
-	printf("result: %f\n", result);
-
-	cpuNormDotProductDerivitive(rows, arr1, arr2, arr1Gradient, arr2Gradient);
+	printf("result: %f\n\n", cpuNormDot(rows, arr1, arr2, arr1Gradient, arr2Gradient));
 	PrintMatrix(rows, 1, arr1Gradient, "arr1Gradient");
 	PrintMatrix(rows, 1, arr2Gradient, "arr2Gradient");
 
