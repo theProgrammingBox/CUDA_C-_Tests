@@ -151,8 +151,14 @@ public:
 		
 		for (uint32_t counter = vecDim; counter--;)
 		{
+			/*// old
+			float vec1Derivative = (vec2[counter] - vec1[counter] * vecOneDotVecTwo / vecOneSquaredMagnitude) * inverseSqrtMagnitudeProduct;
+			float vec2Derivative = (vec1[counter] - vec2[counter] * vecOneDotVecTwo / vecTwoSquaredMagnitude) * inverseSqrtMagnitudeProduct;*/
+
+			// new
 			float vec1Derivative = (vec2[counter] * vecOneSquaredMagnitude - vec1[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
 			float vec2Derivative = (vec1[counter] * vecTwoSquaredMagnitude - vec2[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
+
 			vec1[counter] += vec1Derivative * 0.001f;
 			vec2[counter] += vec2Derivative * 0.001f;
 		}
