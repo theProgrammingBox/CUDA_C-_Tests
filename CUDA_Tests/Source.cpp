@@ -94,22 +94,74 @@ void cpuGenerateUniform(float* matrix, uint32_t size, float min = 0, float max =
 		matrix[counter] = GLOBAL::random.Rfloat(min, max);
 }
 
+float invSqrt(float number)
+{
+	long i = 0x5F1FFFF9 - (*(long*)&number >> 1);
+	float tmp = *(float*)&i;
+	return tmp * 0.703952253f * (2.38924456f - number * tmp * tmp);
+}
+
 class Example : public olc::PixelGameEngine
 {
 public:
+	uint32_t vecDim = 2;
 	float* vec1;
 	float* vec2;
+	float* vec1Derivative;
+	float* vec2Derivative;
+
+	float orgin[2];
 	
 	bool OnUserCreate() override
 	{
+		vec1 = new float[vecDim];
+		vec2 = new float[vecDim];
+		vec1Derivative = new float[vecDim];
+		vec2Derivative = new float[vecDim];
+
+		cpuGenerateUniform(vec1, vecDim, -1, 1);
+		cpuGenerateUniform(vec2, vecDim, -1, 1);
+
+		orgin[0] = ScreenWidth() * 0.5f;
+		orgin[1] = ScreenHeight() * 0.5f;
+		
 		return true;
 	}
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-		for (int x = 0; x < ScreenWidth(); x++)
-			for (int y = 0; y < ScreenHeight(); y++)
-				Draw(x, y, olc::Pixel(rand() % 256, rand() % 256, rand() % 256));
+		if (GetMouse(0).bHeld)
+		{
+			vec1[0] = (GetMouseX() - orgin[0]) * 0.01f;
+			vec1[1] = (GetMouseY() - orgin[1]) * 0.01f;
+		}
+		if (GetMouse(1).bHeld)
+		{
+			vec2[0] = (GetMouseX() - orgin[0]) * 0.01f;
+			vec2[1] = (GetMouseY() - orgin[1]) * 0.01f;
+		}
+
+		Clear(olc::BLACK);
+		DrawLine(orgin[0], orgin[1], orgin[0] + vec1[0] * 100, orgin[1] + vec1[1] * 100, olc::RED);
+		DrawLine(orgin[0], orgin[1], orgin[0] + vec2[0] * 100, orgin[1] + vec2[1] * 100, olc::GREEN);
+		
+		float vecOneSquaredMagnitude = vec1[0] * vec1[0] + vec1[1] * vec1[1];
+		float vecTwoSquaredMagnitude = vec2[0] * vec2[0] + vec2[1] * vec2[1];
+		float magnitudeProduct = vecOneSquaredMagnitude * vecTwoSquaredMagnitude;
+		float inverseSqrtMagnitudeProduct = invSqrt(magnitudeProduct);
+		float vecOneDotVecTwo = vec1[0] * vec2[0] + vec1[1] * vec2[1];
+		float cosTheta = vecOneDotVecTwo * inverseSqrtMagnitudeProduct;
+		float cosThetaTarget = 1.0f;
+		
+		float cosThetaDerivative = cosThetaTarget - cosTheta;
+		for (uint32_t counter = vecDim; counter--;)
+		{
+			vec1Derivative[counter] = (vec2[counter] - vec1[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
+			vec2Derivative[counter] = (vec1[counter] - vec2[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
+			vec1[counter] += vec1Derivative[counter] * 0.01f;
+			vec2[counter] += vec2Derivative[counter] * 0.01f;
+		}
+		
 		return true;
 	}
 };
@@ -117,7 +169,7 @@ public:
 int main()
 {
 	Example demo;
-	if (demo.Construct(256, 240, 4, 4))
+	if (demo.Construct(256, 256, 4, 4))
 		demo.Start();
 	return 0;
 }
