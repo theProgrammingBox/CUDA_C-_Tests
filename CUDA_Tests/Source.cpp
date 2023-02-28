@@ -107,8 +107,6 @@ public:
 	uint32_t vecDim = 2;
 	float* vec1;
 	float* vec2;
-	float* vec1Derivative;
-	float* vec2Derivative;
 
 	float orgin[2];
 	
@@ -116,8 +114,6 @@ public:
 	{
 		vec1 = new float[vecDim];
 		vec2 = new float[vecDim];
-		vec1Derivative = new float[vecDim];
-		vec2Derivative = new float[vecDim];
 
 		cpuGenerateUniform(vec1, vecDim, -1, 1);
 		cpuGenerateUniform(vec2, vecDim, -1, 1);
@@ -153,13 +149,12 @@ public:
 		float cosTheta = vecOneDotVecTwo * inverseSqrtMagnitudeProduct;
 		float cosThetaTarget = 1.0f;
 		
-		float cosThetaDerivative = 1;// cosThetaTarget - cosTheta;
 		for (uint32_t counter = vecDim; counter--;)
 		{
-			vec1Derivative[counter] = (vec2[counter] - vec1[counter] * vecOneDotVecTwo / vecOneSquaredMagnitude) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
-			vec2Derivative[counter] = (vec1[counter] - vec2[counter] * vecOneDotVecTwo / vecTwoSquaredMagnitude) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
-			vec1[counter] += vec1Derivative[counter] * 0.001f;
-			vec2[counter] += vec2Derivative[counter] * 0.001f;
+			float vec1Derivative = (vec2[counter] * vecOneSquaredMagnitude - vec1[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
+			float vec2Derivative = (vec1[counter] * vecTwoSquaredMagnitude - vec2[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
+			vec1[counter] += vec1Derivative * 0.001f;
+			vec2[counter] += vec2Derivative * 0.001f;
 		}
 		
 		return true;
