@@ -71,16 +71,16 @@ public:
 
 private:
 	uint64_t state[2];
+
+	static uint32_t murmur_32_scramble(uint32_t k) {
+		k *= 0xcc9e2d51;
 		k = (k << 15) | (k >> 17);
 		k *= 0x1b873593;
 		return k;
 	}
 
 	static uint32_t nanosecond() { return duration_cast<nanoseconds>(high_resolution_clock::now().time_since_epoch()).count(); }
-	static uint32_t microsecond() { return duration_cast<microseconds>(high_resolution_c
-
-	static uint32_t murmur_32_scramble(uint32_t k) {
-		k *= 0xcc9e2d51;lock::now().time_since_epoch()).count(); }
+	static uint32_t microsecond() { return duration_cast<microseconds>(high_resolution_clock::now().time_since_epoch()).count(); }
 };
 
 namespace GLOBAL
