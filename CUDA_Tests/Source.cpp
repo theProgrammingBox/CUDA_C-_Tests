@@ -153,13 +153,13 @@ public:
 		float cosTheta = vecOneDotVecTwo * inverseSqrtMagnitudeProduct;
 		float cosThetaTarget = 1.0f;
 		
-		float cosThetaDerivative = cosThetaTarget - cosTheta;
+		float cosThetaDerivative = 1;// cosThetaTarget - cosTheta;
 		for (uint32_t counter = vecDim; counter--;)
 		{
-			vec1Derivative[counter] = (vec2[counter] - vec1[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
-			vec2Derivative[counter] = (vec1[counter] - vec2[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
-			vec1[counter] += vec1Derivative[counter] * 0.01f;
-			vec2[counter] += vec2Derivative[counter] * 0.01f;
+			vec1Derivative[counter] = (vec2[counter] - vec1[counter] * vecOneDotVecTwo / vecOneSquaredMagnitude) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
+			vec2Derivative[counter] = (vec1[counter] - vec2[counter] * vecOneDotVecTwo / vecTwoSquaredMagnitude) * inverseSqrtMagnitudeProduct * cosThetaDerivative;
+			vec1[counter] += vec1Derivative[counter] * 0.001f;
+			vec2[counter] += vec2Derivative[counter] * 0.001f;
 		}
 		
 		return true;
