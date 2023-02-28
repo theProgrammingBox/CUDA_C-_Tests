@@ -1,34 +1,44 @@
 #include <fstream>
 
-using std::ofstream;
-using std::ifstream;
-using std::ios;
-
-class IDK
+void cpuLeakyRelu(float* input, float* output, uint32_t size)
 {
-public:
-	uint32_t what = -3;
-	
-	uint32_t GetWhat()
+	// reflection of relu
+	for (size_t counter = size; counter--;)
+		output[counter] = (((*(int32_t*)(input + counter) & 0x80000000) >> 31) * 0.9f + 0.1f) * input[counter];
+}
+
+void cpuLeakyReluDerivative(float* input, float* gradient, float* output, uint32_t size)
+{
+	// reflection of relu derivative
+	for (size_t counter = size; counter--;)
+		output[counter] = (((*(int32_t*)(input + counter) & 0x80000000) >> 31) * 0.9f + 0.1f) * gradient[counter];
+}
+
+void PrintMatrix(float* arr, uint32_t rows, uint32_t cols, const char* label) {
+	printf("%s:\n", label);
+	for (uint32_t i = 0; i < rows; i++)
 	{
-		return what;
+		for (uint32_t j = 0; j < cols; j++)
+			printf("%8.3f ", arr[i * cols + j]);
+		printf("\n");
 	}
-};
+	printf("\n");
+}
 
 int main()
 {
-	ofstream file("test.txt", std::ios::out | std::ios::binary);
-	IDK idk;
-	idk.what = 5326;
-	file.write((char*)&idk.GetWhat(), sizeof(IDK));
-	file.close();
+	float* input = new float[100];
+	float* output = new float[100];
+	float* gradient = new float[100];
 	
-	ifstream file2("test.txt", std::ios::in | std::ios::binary);
-	IDK idk2;
-	file2.read((char*)&idk2.what, sizeof(IDK));
-	file2.close();
-	
-	printf("%d", idk2.what);
+	for (size_t counter = 100; counter--;)
+		input[counter] = (float)counter / 100.0f;
+
+	cpuLeakyRelu(input, output, 100);
+	PrintMatrix(input, 10, 10, "Input");
+
+	cpuLeakyReluDerivative(input, gradient, output, 100);
+	PrintMatrix(output, 10, 10, "Output");
 
 	return 0;
 }
