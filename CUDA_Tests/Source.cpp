@@ -126,12 +126,12 @@ public:
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-		if (GetMouse(0).bHeld)
+		if (GetMouse(0).bPressed)
 		{
 			vec1[0] = (GetMouseX() - orgin[0]) * 0.01f;
 			vec1[1] = (GetMouseY() - orgin[1]) * 0.01f;
 		}
-		if (GetMouse(1).bHeld)
+		if (GetMouse(1).bPressed)
 		{
 			vec2[0] = (GetMouseX() - orgin[0]) * 0.01f;
 			vec2[1] = (GetMouseY() - orgin[1]) * 0.01f;
@@ -149,6 +149,8 @@ public:
 		float cosTheta = vecOneDotVecTwo * inverseSqrtMagnitudeProduct;
 		float cosThetaTarget = 1.0f;
 		
+		float vec1DerivativeMagnitude = 0;
+		float vec2DerivativeMagnitude = 0;
 		for (uint32_t counter = vecDim; counter--;)
 		{
 			/*// old
@@ -156,12 +158,18 @@ public:
 			float vec2Derivative = (vec1[counter] - vec2[counter] * vecOneDotVecTwo / vecTwoSquaredMagnitude) * inverseSqrtMagnitudeProduct;*/
 
 			// new
-			float vec1Derivative = (vec2[counter] * vecOneSquaredMagnitude - vec1[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
-			float vec2Derivative = (vec1[counter] * vecTwoSquaredMagnitude - vec2[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
+			float vec1Derivative = (vec2[counter] * vecOneSquaredMagnitude - vec1[counter] * vecOneDotVecTwo) / vecTwoSquaredMagnitude * vecOneSquaredMagnitude * inverseSqrtMagnitudeProduct * inverseSqrtMagnitudeProduct;
+			float vec2Derivative = -(vec1[counter] * vecTwoSquaredMagnitude - vec2[counter] * vecOneDotVecTwo) / vecOneSquaredMagnitude * vecOneSquaredMagnitude * inverseSqrtMagnitudeProduct * inverseSqrtMagnitudeProduct;
 
-			vec1[counter] += vec1Derivative * 0.001f;
-			vec2[counter] += vec2Derivative * 0.001f;
+			vec1[counter] += vec1Derivative * 0.0001f;
+			vec2[counter] += vec2Derivative * 0.0001f;
+			
+			vec1DerivativeMagnitude += vec1Derivative * vec1Derivative;
+			vec2DerivativeMagnitude += vec2Derivative * vec2Derivative;
 		}
+
+		DrawString(0, 10, "vec1DerivativeMagnitude: " + std::to_string(sqrt(vec1DerivativeMagnitude)), olc::WHITE);
+		DrawString(0, 20, "vec2DerivativeMagnitude: " + std::to_string(sqrt(vec2DerivativeMagnitude)), olc::WHITE);
 		
 		return true;
 	}
