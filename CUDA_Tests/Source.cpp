@@ -86,6 +86,8 @@ private:
 namespace GLOBAL
 {
 	Random random(Random::MakeSeed(0));
+	constexpr float ZEROF = 0.0f;
+	constexpr float ONEF = 1.0f;
 }
 
 void cpuGenerateUniform(float* matrix, uint32_t size, float min = 0, float max = 1)
@@ -101,22 +103,76 @@ float invSqrt(float number)
 	return tmp * 0.703952253f * (2.38924456f - number * tmp * tmp);
 }
 
+void cpuSgemmStridedBatched(
+	bool transB, bool transA,
+	int CCols, int CRows, int AColsBRows,
+	const float* alpha,
+	float* B, int ColsB, int SizeB,
+	float* A, int ColsA, int SizeA,
+	const float* beta,
+	float* C, int ColsC, int SizeC,
+	int batchCount)
+{
+	for (int b = batchCount; b--;)
+	{
+		for (int m = CCols; m--;)
+			for (int n = CRows; n--;)
+			{
+				float sum = 0;
+				for (int k = AColsBRows; k--;)
+					sum += (transA ? A[k * ColsA + n] : A[n * ColsA + k]) * (transB ? B[m * ColsB + k] : B[k * ColsB + m]);
+				C[n * ColsC + m] = *alpha * sum + *beta * C[n * ColsC + m];
+			}
+		A += SizeA;
+		B += SizeB;
+		C += SizeC;
+	}
+}
+
+void cpuLeakyRelu(float* input, float* output, uint32_t size)
+{
+	// reflection of relu
+	for (size_t counter = size; counter--;)
+		output[counter] = (((*(int32_t*)(input + counter) & 0x80000000) >> 31) * 0.9f + 0.1f) * input[counter];
+}
+
+void cpuLeakyReluDerivative(float* input, float* gradient, float* output, uint32_t size)
+{
+	// reflection of relu derivative
+	for (size_t counter = size; counter--;)
+		output[counter] = (((*(int32_t*)(input + counter) & 0x80000000) >> 31) * 0.9f + 0.1f) * gradient[counter];
+}
+
 class Example : public olc::PixelGameEngine
 {
 public:
 	uint32_t vecDim = 2;
-	float* vec1;
-	float* vec2;
+	uint32_t inputDim = 2;
+	float* vecGoal;
+	float* input;
+	float* weight;
+	float* product;
+	float* activation;
+	float* activationDerivitive;
+	float* productDerivitive;
+	float* weightDerivitive;
 
 	float orgin[2];
 	
 	bool OnUserCreate() override
 	{
-		vec1 = new float[vecDim];
-		vec2 = new float[vecDim];
+		vecGoal = new float[vecDim];
+		input = new float[inputDim];
+		weight = new float[inputDim * vecDim];
+		product = new float[vecDim];
+		activation = new float[vecDim];
+		activationDerivitive = new float[vecDim];
+		productDerivitive = new float[vecDim];
+		weightDerivitive = new float[inputDim * vecDim];
 
-		cpuGenerateUniform(vec1, vecDim, -1, 1);
-		cpuGenerateUniform(vec2, vecDim, -1, 1);
+		cpuGenerateUniform(vecGoal, vecDim, -1, 1);
+		cpuGenerateUniform(input, inputDim, -1, 1);
+		cpuGenerateUniform(weight, inputDim * vecDim, -1, 1);
 
 		orgin[0] = ScreenWidth() * 0.5f;
 		orgin[1] = ScreenHeight() * 0.5f;
@@ -128,24 +184,31 @@ public:
 	{
 		if (GetMouse(0).bPressed)
 		{
-			vec1[0] = (GetMouseX() - orgin[0]) * 0.01f;
-			vec1[1] = (GetMouseY() - orgin[1]) * 0.01f;
-		}
-		if (GetMouse(1).bPressed)
-		{
-			vec2[0] = (GetMouseX() - orgin[0]) * 0.01f;
-			vec2[1] = (GetMouseY() - orgin[1]) * 0.01f;
+			vecGoal[0] = (GetMouseX() - orgin[0]) * 0.01f;
+			vecGoal[1] = (GetMouseY() - orgin[1]) * 0.01f;
 		}
 
+		cpuSgemmStridedBatched(
+			false, false,
+			vecDim, 1, inputDim,
+			&GLOBAL::ONEF,
+			weight, vecDim, 0,
+			input, inputDim, 0,
+			&GLOBAL::ZEROF,
+			product, vecDim, 0,
+			1);
+
+		cpuLeakyRelu(product, activation, vecDim);
+
 		Clear(olc::BLACK);
-		DrawLine(orgin[0], orgin[1], orgin[0] + vec1[0] * 100, orgin[1] + vec1[1] * 100, olc::RED);
-		DrawLine(orgin[0], orgin[1], orgin[0] + vec2[0] * 100, orgin[1] + vec2[1] * 100, olc::GREEN);
+		DrawLine(orgin[0], orgin[1], orgin[0] + activation[0] * 100, orgin[1] + activation[1] * 100, olc::RED);
+		DrawLine(orgin[0], orgin[1], orgin[0] + vecGoal[0] * 100, orgin[1] + vecGoal[1] * 100, olc::GREEN);
 		
-		float vecOneSquaredMagnitude = vec1[0] * vec1[0] + vec1[1] * vec1[1];
-		float vecTwoSquaredMagnitude = vec2[0] * vec2[0] + vec2[1] * vec2[1];
+		float vecOneSquaredMagnitude = activation[0] * activation[0] + activation[1] * activation[1];
+		float vecTwoSquaredMagnitude = vecGoal[0] * vecGoal[0] + vecGoal[1] * vecGoal[1];
 		float magnitudeProduct = vecOneSquaredMagnitude * vecTwoSquaredMagnitude;
 		float inverseSqrtMagnitudeProduct = invSqrt(magnitudeProduct);
-		float vecOneDotVecTwo = vec1[0] * vec2[0] + vec1[1] * vec2[1];
+		float vecOneDotVecTwo = activation[0] * vecGoal[0] + activation[1] * vecGoal[1];
 		float cosTheta = vecOneDotVecTwo * inverseSqrtMagnitudeProduct;
 		float cosThetaTarget = 1.0f;
 		
@@ -158,18 +221,23 @@ public:
 			float vec2Derivative = (vec1[counter] - vec2[counter] * vecOneDotVecTwo / vecTwoSquaredMagnitude) * inverseSqrtMagnitudeProduct;*/
 
 			// new
-			float vec1Derivative = (vec2[counter] * vecOneSquaredMagnitude - vec1[counter] * vecOneDotVecTwo) / vecTwoSquaredMagnitude * vecOneSquaredMagnitude * inverseSqrtMagnitudeProduct * inverseSqrtMagnitudeProduct;
-			float vec2Derivative = -(vec1[counter] * vecTwoSquaredMagnitude - vec2[counter] * vecOneDotVecTwo) / vecOneSquaredMagnitude * vecOneSquaredMagnitude * inverseSqrtMagnitudeProduct * inverseSqrtMagnitudeProduct;
-
-			vec1[counter] += vec1Derivative * 0.0001f;
-			vec2[counter] += vec2Derivative * 0.0001f;
-			
-			vec1DerivativeMagnitude += vec1Derivative * vec1Derivative;
-			vec2DerivativeMagnitude += vec2Derivative * vec2Derivative;
+			activationDerivitive[counter] = (vecGoal[counter] * vecOneSquaredMagnitude - activation[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
 		}
 
-		DrawString(0, 10, "vec1DerivativeMagnitude: " + std::to_string(sqrt(vec1DerivativeMagnitude)), olc::WHITE);
-		DrawString(0, 20, "vec2DerivativeMagnitude: " + std::to_string(sqrt(vec2DerivativeMagnitude)), olc::WHITE);
+		cpuLeakyReluDerivative(product, activationDerivitive, productDerivitive, vecDim);
+
+		cpuSgemmStridedBatched(
+			false, true,
+			vecDim, inputDim, 1,
+			&GLOBAL::ONEF,
+			productDerivitive, vecDim, 0,
+			input, inputDim, 0,
+			&GLOBAL::ZEROF,
+			weightDerivitive, vecDim, 0,
+			1);
+		
+		for (uint32_t counter = inputDim * vecDim; counter--;)
+			weight[counter] += weightDerivitive[counter] * 0.01f;
 		
 		return true;
 	}
