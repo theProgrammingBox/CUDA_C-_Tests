@@ -143,6 +143,12 @@ void cpuLeakyReluDerivative(float* input, float* gradient, float* output, uint32
 		output[counter] = (((*(int32_t*)(input + counter) & 0x80000000) >> 31) * 0.9f + 0.1f) * gradient[counter];
 }
 
+void cpuSaxpy(int N, const float* alpha, const float* X, int incX, float* Y, int incY)
+{
+	for (int i = N; i--;)
+		Y[i * incY] += *alpha * X[i * incX];
+}
+
 class Example : public olc::PixelGameEngine
 {
 public:
@@ -151,10 +157,12 @@ public:
 	float* vecGoal;
 	float* input;
 	float* weight;
+	float* bias;
 	float* product;
 	float* activation;
 	float* activationDerivitive;
 	float* productDerivitive;
+	float* biasDerivitive;
 	float* weightDerivitive;
 
 	float orgin[2];
@@ -164,15 +172,18 @@ public:
 		vecGoal = new float[vecDim];
 		input = new float[inputDim];
 		weight = new float[inputDim * vecDim];
+		bias = new float[vecDim];
 		product = new float[vecDim];
 		activation = new float[vecDim];
 		activationDerivitive = new float[vecDim];
 		productDerivitive = new float[vecDim];
+		biasDerivitive = new float[vecDim];
 		weightDerivitive = new float[inputDim * vecDim];
 
 		cpuGenerateUniform(vecGoal, vecDim, -1, 1);
 		cpuGenerateUniform(input, inputDim, -1, 1);
 		cpuGenerateUniform(weight, inputDim * vecDim, -1, 1);
+		cpuGenerateUniform(bias, vecDim, -1, 1);
 
 		orgin[0] = ScreenWidth() * 0.5f;
 		orgin[1] = ScreenHeight() * 0.5f;
@@ -182,7 +193,7 @@ public:
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-		if (GetMouse(0).bPressed)
+		if (GetMouse(0).bHeld)// .bPressed)
 		{
 			vecGoal[0] = (GetMouseX() - orgin[0]) * 0.01f;
 			vecGoal[1] = (GetMouseY() - orgin[1]) * 0.01f;
@@ -198,6 +209,8 @@ public:
 			product, vecDim, 0,
 			1);
 
+		cpuSaxpy(vecDim, &GLOBAL::ONEF, bias, 1, product, 1);
+
 		cpuLeakyRelu(product, activation, vecDim);
 
 		Clear(olc::BLACK);
@@ -210,21 +223,23 @@ public:
 		float inverseSqrtMagnitudeProduct = invSqrt(magnitudeProduct);
 		float vecOneDotVecTwo = activation[0] * vecGoal[0] + activation[1] * vecGoal[1];
 		float cosTheta = vecOneDotVecTwo * inverseSqrtMagnitudeProduct;
-		float cosThetaTarget = 1.0f;
+		float cosThetaTarget = 1.0f - cosTheta;
 		
 		float vec1DerivativeMagnitude = 0;
 		float vec2DerivativeMagnitude = 0;
 		for (uint32_t counter = vecDim; counter--;)
 		{
-			/*// old
-			float vec1Derivative = (vec2[counter] - vec1[counter] * vecOneDotVecTwo / vecOneSquaredMagnitude) * inverseSqrtMagnitudeProduct;
-			float vec2Derivative = (vec1[counter] - vec2[counter] * vecOneDotVecTwo / vecTwoSquaredMagnitude) * inverseSqrtMagnitudeProduct;*/
-
 			// new
-			activationDerivitive[counter] = (vecGoal[counter] * vecOneSquaredMagnitude - activation[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct;
+			//activationDerivitive[counter] = (vecGoal[counter] * vecOneSquaredMagnitude - activation[counter] * vecOneDotVecTwo) * inverseSqrtMagnitudeProduct * cosThetaTarget;
+		
+			// old
+			activationDerivitive[counter] = (vecGoal[counter] - activation[counter] * vecOneDotVecTwo / vecOneSquaredMagnitude) * inverseSqrtMagnitudeProduct * cosThetaTarget;
 		}
 
 		cpuLeakyReluDerivative(product, activationDerivitive, productDerivitive, vecDim);
+
+		memset(biasDerivitive, 0, sizeof(float) * vecDim);
+		cpuSaxpy(vecDim, &GLOBAL::ONEF, productDerivitive, 1, biasDerivitive, 1);
 
 		cpuSgemmStridedBatched(
 			false, true,
@@ -236,8 +251,8 @@ public:
 			weightDerivitive, vecDim, 0,
 			1);
 		
-		for (uint32_t counter = inputDim * vecDim; counter--;)
-			weight[counter] += weightDerivitive[counter] * 0.01f;
+		cpuSaxpy(inputDim * vecDim, &GLOBAL::ONEF, weightDerivitive, 1, weight, 1);
+		cpuSaxpy(vecDim, &GLOBAL::ONEF, biasDerivitive, 1, bias, 1);
 		
 		return true;
 	}
