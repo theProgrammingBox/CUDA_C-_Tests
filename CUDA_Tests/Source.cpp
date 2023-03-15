@@ -80,16 +80,16 @@ float LowLevelf32Mul(float a, float b)
 	while (resultMant & 0xffffffffff800000)
 	{
 		resultMant >>= 1;
-		LowLevelI32Add(resultExp, 1);
+		//resultExp = LowLevelI32Add(resultExp, 1);
 	}
 
 	while (!(resultMant & 0x800000))
 	{
 		resultMant <<= 1;
-		LowLevelI32Add(resultExp, -1);
+		//resultExp = LowLevelI32Add(resultExp, -1);
 	}
 	
-	uint32_t result = (resultExp << 23) | (resultMant & 0x7FFFFF);
+	uint32_t result = ((aI ^ bI) & 0x80000000) | (resultExp << 23) | (resultMant & 0x7FFFFF);
 
 	for (int32_t i = 31; i >= 0; i--)
 	{
