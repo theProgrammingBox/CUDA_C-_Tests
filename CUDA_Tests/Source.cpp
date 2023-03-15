@@ -74,8 +74,8 @@ float LowLevelf32Mul(float a, float b)
 	uint32_t expA = aI >> 23 & 0xFF;
 	uint32_t expB = bI >> 23 & 0xFF;
 
-	uint64_t resultMant = LowLevelI64Mul(mantA, mantB) >> 24;
-	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -126);
+	uint64_t resultMant = LowLevelI64Mul(mantA, mantB) >> 23;
+	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -127);
 	
 	while (resultMant & 0xffffffffff800000)
 	{
