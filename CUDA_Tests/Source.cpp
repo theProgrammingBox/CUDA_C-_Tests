@@ -76,6 +76,8 @@ float LowLevelf32Mul(float a, float b)
 
 	uint64_t resultMant = LowLevelI64Mul(mantA, mantB) >> 23;
 	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -127);
+
+	// the problem is rounding, when I shift to the right, I am removing data
 	
 	while (resultMant & 0xffffffffff800000)
 	{
