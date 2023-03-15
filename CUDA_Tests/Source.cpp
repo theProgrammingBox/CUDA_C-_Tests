@@ -55,48 +55,58 @@ float LowLevelf32Mul(float a, float b)
 	
 	uint32_t aI = *(uint32_t*)&a;
 	uint32_t bI = *(uint32_t*)&b;
-	/*unsigned int mantissa_bits = (float_bits & 0x7FFFFF) | 0x800000;
-	int mantissa_shift = 150 - ((float_bits >> 23) & 0xFF);
-	unsigned long long mantissa = (unsigned long long)mantissa_bits << mantissa_shift;*/
-	uint32_t mantA = aI & 0x7FFFFF;
-	uint32_t mantB = bI & 0x7FFFFF;
+
+	uint32_t mantaa = aI & 0x7FFFFF;
+	uint32_t mantbb = bI & 0x7FFFFF;
+
+	uint64_t mantA = (aI & 0x7FFFFF) | 0x800000;
+	uint64_t mantB = (bI & 0x7FFFFF) | 0x800000;
+
 	uint32_t expA = aI >> 23 & 0xFF;
 	uint32_t expB = bI >> 23 & 0xFF;
 
-	uint32_t resultExp = LowLevelI32Add(expA, expB);
-	uint32_t resultMant = LowLevelI32Mul(mantA, mantB);
-	uint32_t resultSign = (aI ^ bI) & 0x80000000;
-	
 	/*for (int32_t i = 31; i >= 0; i--)
 	{
-		printf("%d", (resultExp >> i) & 1);
-		if (i == 31 || i == 23) printf(" ");
+		printf("%d", (mantaa >> i) & 1);
 	}
-	printf("\n");*/
+	printf("\n");
 
-	while (resultMant & 0xFF800000)
+	for (int32_t i = 31; i >= 0; i--)
+	{
+		printf("%d", (mantbb >> i) & 1);
+	}
+	printf("\n");
+
+	for (int32_t i = 63; i >= 0; i--)
+	{
+		printf("%d", (mantA >> i) & 1);
+	}
+	printf("\n");
+
+	for (int32_t i = 63; i >= 0; i--)
+	{
+		printf("%d", (mantB >> i) & 1);
+	}
+	printf("\n");
+
+	printf("%d %d\n", expA, expB);*/
+
+	uint64_t resultMant = LowLevelI32Mul(mantA, mantB);
+	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -127);
+	
+	while (resultMant & 0xffffffffff800000)
 	{
 		resultMant >>= 1;
 		LowLevelI32Add(resultExp, 1);
 	}
 
-	// Round the result
-	if (resultMant & 0x400000)
+	while (!(resultMant & 0x800000))
 	{
-		LowLevelI32Add(resultMant, 0x800000);
+		resultMant <<= 1;
+		LowLevelI32Add(resultExp, -1);
 	}
-
-	for (int32_t i = 31; i >= 0; i--)
-	{
-		printf("%d", (resultMant >> i) & 1);
-		if (i == 31 || i == 23) printf(" ");
-	}
-	printf("\n");
 	
-	resultExp = LowLevelI8Add(resultExp, -127);
-
-	uint32_t result = (resultExp) << 23;
-	result |= resultMant | resultSign;
+	uint32_t result = (resultExp << 23) | (resultMant & 0x7FFFFF);
 
 	for (int32_t i = 31; i >= 0; i--)
 	{
@@ -106,6 +116,12 @@ float LowLevelf32Mul(float a, float b)
 	printf("\n");
 	
 	return *(float*)&result;
+}
+
+float LowLevelf32Add(float a, float b)
+{
+	
+	return 0;
 }
 
 uint32_t main()
