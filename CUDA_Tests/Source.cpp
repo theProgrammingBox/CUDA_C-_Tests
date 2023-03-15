@@ -30,9 +30,9 @@ uint32_t LowLevelI32Mul(uint32_t x, uint32_t y)
 	return result;
 }
 
-uint8_t LowLevelI8Add(uint8_t a, uint8_t b)
+uint64_t LowLevelI64Add(uint64_t a, uint64_t b)
 {
-	uint8_t carry;
+	uint64_t carry;
 	while (b)
 	{
 		carry = a & b;
@@ -40,6 +40,18 @@ uint8_t LowLevelI8Add(uint8_t a, uint8_t b)
 		b = carry << 1;
 	}
 	return a;
+}
+
+uint64_t LowLevelI64Mul(uint64_t x, uint64_t y)
+{
+	uint64_t result = 0;
+	while (y)
+	{
+		if (y & 1) result = LowLevelI64Add(result, x);
+		y >>= 1;
+		x <<= 1;
+	}
+	return result;
 }
 
 float LowLevelf32Mul(float a, float b)
@@ -56,42 +68,13 @@ float LowLevelf32Mul(float a, float b)
 	uint32_t aI = *(uint32_t*)&a;
 	uint32_t bI = *(uint32_t*)&b;
 
-	uint32_t mantaa = aI & 0x7FFFFF;
-	uint32_t mantbb = bI & 0x7FFFFF;
-
 	uint64_t mantA = (aI & 0x7FFFFF) | 0x800000;
 	uint64_t mantB = (bI & 0x7FFFFF) | 0x800000;
 
 	uint32_t expA = aI >> 23 & 0xFF;
 	uint32_t expB = bI >> 23 & 0xFF;
 
-	/*for (int32_t i = 31; i >= 0; i--)
-	{
-		printf("%d", (mantaa >> i) & 1);
-	}
-	printf("\n");
-
-	for (int32_t i = 31; i >= 0; i--)
-	{
-		printf("%d", (mantbb >> i) & 1);
-	}
-	printf("\n");
-
-	for (int32_t i = 63; i >= 0; i--)
-	{
-		printf("%d", (mantA >> i) & 1);
-	}
-	printf("\n");
-
-	for (int32_t i = 63; i >= 0; i--)
-	{
-		printf("%d", (mantB >> i) & 1);
-	}
-	printf("\n");
-
-	printf("%d %d\n", expA, expB);*/
-
-	uint64_t resultMant = LowLevelI32Mul(mantA, mantB);
+	uint64_t resultMant = LowLevelI64Mul(mantA, mantB);
 	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -127);
 	
 	while (resultMant & 0xffffffffff800000)
