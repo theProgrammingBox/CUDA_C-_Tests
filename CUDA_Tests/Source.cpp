@@ -74,22 +74,22 @@ float LowLevelf32Mul(float a, float b)
 	uint32_t expA = aI >> 23 & 0xFF;
 	uint32_t expB = bI >> 23 & 0xFF;
 
-	uint64_t resultMant = LowLevelI64Mul(mantA, mantB);
-	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -127);
+	uint64_t resultMant = LowLevelI64Mul(mantA, mantB) >> 24;
+	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -126);
 	
 	while (resultMant & 0xffffffffff800000)
 	{
 		resultMant >>= 1;
-		//resultExp = LowLevelI32Add(resultExp, 1);
+		resultExp = LowLevelI32Add(resultExp, 1);
 	}
 
 	while (!(resultMant & 0x800000))
 	{
 		resultMant <<= 1;
-		//resultExp = LowLevelI32Add(resultExp, -1);
+		resultExp = LowLevelI32Add(resultExp, -1);
 	}
 	
-	uint32_t result = ((aI ^ bI) & 0x80000000) | (resultExp << 23) | (resultMant & 0x7FFFFF);
+	uint32_t result = (aI ^ bI) & 0x80000000 | resultExp << 23 | (resultMant & 0x7FFFFF);
 
 	for (int32_t i = 31; i >= 0; i--)
 	{
@@ -129,8 +129,8 @@ uint32_t main()
 		int32_t k = LowLevelI32Neg(i);
 		if (j != k) printf("%d * -1 = %d\n%d * -1 = %d\n\n", i, j, i, k);
 
-		float l = random.Rfloat(-10, 10);
-		float m = random.Rfloat(-10, 10);
+		float l = random.Rfloat(-100, 100);
+		float m = random.Rfloat(-100, 100);
 		float n = l * m;
 		float o = LowLevelf32Mul(l, m);
 		if (n != o) printf("%f * %f = %f\n%f * %f = %f\n\n", l, m, n, l, m, o);
