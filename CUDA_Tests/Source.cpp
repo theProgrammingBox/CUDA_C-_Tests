@@ -63,6 +63,8 @@ float LowLevelf32Mul(float x, float y)
 	uint32_t resultExponent = LowLevelI32Add(LowLevelI32Add(I32x >> 23 & 0xFF, I32y >> 23 & 0xFF), -127);
 	bool roundUp = resultMantissa & 0x400000;
 	resultMantissa >>= 23;
+
+	//try a guard bit, a rounding bit
 	
 	while (resultMantissa & 0xffffffffff000000)
 	{
@@ -93,6 +95,8 @@ float LowLevelf32Add(float x, float y)
 
 	uint32_t xMantissa = I32a & 0x7FFFFF | 0x800000;
 	uint32_t yMantissa = I32b & 0x7FFFFF | 0x800000;
+
+	// try a guard bit, a rounding bit and one extra sticky bit
 
 	if (I32a & 0x80000000)
 		xMantissa = LowLevelI32Flip(xMantissa);
