@@ -62,19 +62,16 @@ float LowLevelf32Mul(float a, float b)
 
 	uint64_t resultMant = LowLevelI64Mul(mantA, mantB);
 	uint32_t resultExp = LowLevelI32Add(LowLevelI32Add(expA, expB), -127);
-	bool lastBit = resultMant & 0x400000;
+	bool roundUp = resultMant & 0x400000;
 	resultMant >>= 23;
 	
-	/*do
-	{*/
-		while (resultMant & 0xffffffffff000000)
-		{
-			lastBit = resultMant & 1;
-			resultMant >>= 1;
-			resultExp = LowLevelI32Add(resultExp, 1);
-		}
-		resultMant = LowLevelI64Add(resultMant, lastBit);
-	//} while (resultMant & 0xffffffffff000000);
+	while (resultMant & 0xffffffffff000000)
+	{
+		roundUp = resultMant & 1;
+		resultMant >>= 1;
+		resultExp = LowLevelI32Add(resultExp, 1);
+	}
+	resultMant = LowLevelI64Add(resultMant, roundUp);
 	
 	while (!(resultMant & 0x800000))
 	{
@@ -88,6 +85,7 @@ float LowLevelf32Mul(float a, float b)
 	uint32_t answer = *(uint32_t*)&ans;
 	if (answer ^ result)
 	{
+		printf("roundUp: %d\n", roundUp);
 		for (int32_t i = 31; i >= 0; i--)
 		{
 			printf("%d", (answer >> i) & 1);
@@ -114,11 +112,12 @@ float LowLevelf32Add(float a, float b)
 uint32_t main()
 {
 	Random random(Random::MakeSeed(275));
-	for (uint32_t itr = 100000000000; itr--;)
+	for (uint32_t itr = 1000000; itr--;)
 	{
 		float x = random.Rfloat(-100, 100);
 		float y = random.Rfloat(-100, 100);
 		LowLevelf32Mul(x, y);
+		if (itr % 10000 == 0) printf("%d\n", itr);
 	}
 	
 	return 0;
