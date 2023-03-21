@@ -64,7 +64,8 @@ int main()
 	__half* cpuArr2 = new __half[N];
 
 	CurandGenerateUniformF16(curandGenerator, gpuArr1, N);
-	cudaMemset(gpuArr2, 0, N * sizeof(__half));
+	CurandGenerateUniformF16(curandGenerator, gpuArr2, N);
+	//cudaMemset(gpuArr2, 0, N * sizeof(__half));
 	
 	cudaMemcpy(cpuArr1, gpuArr1, N * sizeof(__half), cudaMemcpyDeviceToHost);
 	cudaMemcpy(cpuArr2, gpuArr2, N * sizeof(__half), cudaMemcpyDeviceToHost);
