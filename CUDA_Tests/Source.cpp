@@ -3,6 +3,50 @@
 #include <vector>
 #include <memory>
 
+olc::Pixel HSVToRGB(const float& hue, const float& saturation, const float& value)
+{
+	if (saturation == 0.0f) return olc::Pixel(value * 255.0f, value * 255.0f, value * 255.0f);
+	float chroma = value * saturation;
+	int huePrime = std::floor(fmod(hue * 0.01666666666667f, 6.0f));
+	float x = chroma * (1 - fabs(fmod(huePrime, 2) - 1));
+	float r, g, b;
+	switch (huePrime)
+	{
+	case 0:
+		r = chroma;
+		g = x;
+		b = 0;
+		break;
+	case 1:
+		r = x;
+		g = chroma;
+		b = 0;
+		break;
+	case 2:
+		r = 0;
+		g = chroma;
+		b = x;
+		break;
+	case 3:
+		r = 0;
+		g = x;
+		b = chroma;
+		break;
+	case 4:
+		r = x;
+		g = 0;
+		b = chroma;
+		break;
+	case 5:
+		r = chroma;
+		g = 0;
+		b = x;
+		break;
+	}
+	float m = value - chroma;
+	return olc::Pixel((r + m) * 255.0f, (g + m) * 255.0f, (b + m) * 255.0f);
+}
+
 class Element
 {
 public:
@@ -21,7 +65,7 @@ public:
 
 	void Render(const olc::vf2d& position, const olc::vf2d& size, const float& zoomLevel, const olc::vf2d& offset, const olc::vf2d& halfScreen)
 	{
-		pge->FillRectDecal((position + offset) * zoomLevel + halfScreen, size * zoomLevel, olc::PixelF(hue, 1.0f, 1.0f));
+		pge->FillRectDecal((position + offset) * zoomLevel + halfScreen, size * zoomLevel, HSVToRGB(hue, 1.0f, 1.0f));
 	}
 };
 
