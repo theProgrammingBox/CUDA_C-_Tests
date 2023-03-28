@@ -79,7 +79,7 @@ public:
     uint32_t numberOfElements;
 	std::unique_ptr<std::unique_ptr<Element>[]> element;
 
-	Form(olc::PixelGameEngine* p, uint32_t numberOfElements = 1) : pge(p), position(olc::vf2d(0, 0)), size(olc::vf2d(100, 100)), formName("Form"), numberOfElements(numberOfElements)
+	Form(olc::PixelGameEngine* p, uint32_t numberOfElements = 1) : pge(p), position(olc::vf2d(0, 0)), size(olc::vf2d(128, numberOfElements * 32)), formName("Form"), numberOfElements(numberOfElements)
 	{
 		element = std::make_unique<std::unique_ptr<Element>[]>(numberOfElements);
 
@@ -89,7 +89,10 @@ public:
 
 	void Render(const float& zoomLevel, const olc::vf2d& offset, const olc::vf2d& halfScreen)
 	{
-		pge->FillRectDecal((position + offset) * zoomLevel + halfScreen, size * zoomLevel, olc::WHITE);
+		const olc::vf2d labelPadding = { 4, 4 };
+		pge->DrawStringDecal((position + offset + labelPadding) * zoomLevel + halfScreen, formName, olc::WHITE, { zoomLevel, zoomLevel });
+		/*pge->FillRectDecal((position + offset) * zoomLevel + halfScreen, labelPadding * zoomLevel, olc::GREEN);
+		pge->FillRectDecal((position + offset + labelPadding) * zoomLevel + halfScreen, size * zoomLevel, olc::GREY);*/
 	}
 };
 
