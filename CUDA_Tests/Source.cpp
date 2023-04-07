@@ -1,56 +1,55 @@
-#include <iostream>
+#define OLC_PGE_APPLICATION
+#include "olcPixelGameEngine.h"
 
-class Test
+class Example : public olc::PixelGameEngine
 {
 public:
-	Test()
+	olc::vf2d pos;
+	olc::vf2d vel;
+	//olc::vf2d mean;
+	float learningRate;
+	
+	Example()
 	{
-		name = new std::string("Test");
-	}
-	virtual ~Test()
-	{
-		delete name;
-	}
-
-	void Print()
-	{
-		printf("%s\n", name->c_str());
+		sAppName = "Example";
 	}
 	
-	std::string* name;
-};
-
-class Test2 : public Test
-{
-public:
-	Test2()
+	bool OnUserCreate() override
 	{
-		name = new std::string("Test2");
-		num = new std::string("123");
-	}
-	
-	virtual ~Test2()
-	{
-		delete num;
+		pos = { ScreenWidth() * 0.5f, ScreenHeight() * 0.5f };
+		vel = { 0.0f, 0.0f };
+		//mean = { 0.0f, 0.0f };
+		learningRate = 1.0f;
+		
+		return true;
 	}
 
-	void Print()
+	bool OnUserUpdate(float fElapsedTime) override
 	{
-		Test::Print();
-		printf("%s\n", num->c_str());
+		olc::vf2d vel = { 0.0f, 0.0f };
+		if (GetKey(olc::Key::W).bHeld)
+			vel.y -= 1.0f;
+		if (GetKey(olc::Key::S).bHeld)
+			vel.y += 1.0f;
+		if (GetKey(olc::Key::A).bHeld)
+			vel.x -= 1.0f;
+		if (GetKey(olc::Key::D).bHeld)
+			vel.x += 1.0f;
+		
+		//mean = mean + (vel - mean);
+		pos += vel * learningRate;
+		
+		Clear(olc::BLACK);
+		DrawCircle(pos, 10, olc::WHITE);
+		
+		return true;
 	}
-	
-	std::string* num;
 };
 
 int main()
 {
-	Test2* test2 = new Test2();
-	test2->Print();
-	std::string* name = test2->name;
-	delete test2;
-
-	printf("Has name been deleted by abstract: %s\n", name->c_str());
-
+	Example demo;
+	if (demo.Construct(1280, 720, 1, 1))
+		demo.Start();
 	return 0;
 }
