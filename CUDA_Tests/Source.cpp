@@ -10,10 +10,10 @@ using std::chrono::nanoseconds;
 using std::chrono::high_resolution_clock;
 using std::chrono::microseconds;
 
-class Random
+class NormalRandomAtHome
 {
 public:
-	Random(uint32_t seed = 0x8a777e69) {
+	NormalRandomAtHome(uint32_t seed = 0x8a777e69) {
 		double dn = 3.442619855899;
 		const double m1 = 2147483648.0;
 		const double vn = 9.91256303526217E-03;
@@ -55,7 +55,7 @@ int main() {
 	float bin_width = 0.1;
 
 	std::vector<int> histogram(num_bins, 0);
-	Random random;
+	NormalRandomAtHome random;
 
 	for (int i = 0; i < num_samples; ++i) {
 		float random_number = random(rand() << 24 ^ rand() << 16 ^ rand() << 8 ^ rand()) * stddev + mean;
