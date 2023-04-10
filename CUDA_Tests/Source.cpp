@@ -84,57 +84,37 @@ float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], 
 
 int main()
 {
-	uint32_t tempSeed;
-	float erravg = 0.0f;
-	const uint32_t samples = 100000000;
     uint32_t seed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-    
-    for (uint32_t i = samples; i--;)
-    {
-        tempSeed = seed;
-        seed = (seed ^ (seed << 13));
-        seed = (seed ^ (seed >> 17));
-        seed = (seed ^ (seed << 5));
-        float x = (seed + tempSeed) * 2.32830643654e-10f * -3;
+    uint32_t kn[128];
+    float fn[128];
+    float wn[128];
 
-        int expHack = (int(x * 12562220) + 0x3f800000);
-        erravg += abs(exp(x) - *(float*)&expHack);
-    }
-	printf("%f\n", erravg / samples);
-    
-    return 0;
-    
-	/*uint32_t seed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-	uint32_t kn[128];
-	float fn[128];
-	float wn[128];
-
-	randomNormalSetup(kn, fn, wn);
+    randomNormalSetup(kn, fn, wn);
 
     const uint32_t bins = 56;
-	const uint32_t samples = 1000000;
+    const uint32_t samples = 1000000;
     const float scale = 1000.0f / samples;
-	const float min = -3.0f;
-	const float max = 3.0f;
-	const float bin_width = (max - min) / bins;
-    
-    uint32_t hist[bins];
-	memset(hist, 0, sizeof(hist));
-	for (uint32_t i = 0; i < samples; i++)
-	{
-		uint32_t bin = (randomNormal(seed, kn, fn, wn) - min) / bin_width;
-		if (bin < bins && bin >= 0)
-			hist[bin]++;
-	}
-    
-	printf("----------------------------------------\n");
-	for (uint32_t i = 0; i < bins; i++)
-	{
-		for (uint32_t j = scale * hist[i]; j--;)
-			printf("*");
-		printf("\n");
-	}
-	printf("----------------------------------------\n");
+    const float min = -3.0f;
+    const float max = 3.0f;
+    const float bin_width = (max - min) / bins;
 
-	return 0;*/
+    uint32_t hist[bins];
+    memset(hist, 0, sizeof(hist));
+    for (uint32_t i = 0; i < samples; i++)
+    {
+        uint32_t bin = (randomNormal(seed, kn, fn, wn) - min) / bin_width;
+        if (bin < bins && bin >= 0)
+            hist[bin]++;
+    }
+
+    printf("----------------------------------------\n");
+    for (uint32_t i = 0; i < bins; i++)
+    {
+        for (uint32_t j = scale * hist[i]; j--;)
+            printf("*");
+        printf("\n");
+    }
+    printf("----------------------------------------\n");
+
+    return 0;
 }
