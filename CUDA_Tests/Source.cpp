@@ -30,7 +30,6 @@ float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], 
 {
     uint32_t tempSeed;
     int32_t randomInt;
-    int32_t expHack;
     uint8_t sevenBits;
     float x, y;
 
@@ -54,18 +53,18 @@ float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], 
                 seed = (seed ^ (seed >> 17));
                 seed = (seed ^ (seed << 5));
                 x = (tempSeed + seed) * 2.32830643654e-10f;
-				x = (*(int32_t*)&x - 0x3f800000) * -2.3935259956e-8f;
+                x = (*(int32_t*)&x - 0x3f800000) * -2.3935259956e-8f;
 
                 tempSeed = seed;
                 seed = (seed ^ (seed << 13));
                 seed = (seed ^ (seed >> 17));
                 seed = (seed ^ (seed << 5));
-				y = (tempSeed + seed) * 2.32830643654e-10f;
-				y = (*(int32_t*)&y - 0x3f800000) * -8.24e-8f;
+                y = (tempSeed + seed) * 2.32830643654e-10f;
+                y = (*(int32_t*)&y - 0x3f800000) * -8.24e-8f;
 
                 if (x * x <= y + y)
                 {
-					x += 3.442620f;
+                    x += 3.442620f;
                     tempSeed = *(uint32_t*)&x ^ randomInt & 0x80000000;
                     return *(float*)&tempSeed;
                 }
@@ -77,19 +76,15 @@ float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], 
         seed = (seed ^ (seed << 13));
         seed = (seed ^ (seed >> 17));
         seed = (seed ^ (seed << 5));
-        /*int expHack = (int(x * 12135920) + 0x3f800000);
-        erravg += abs(exp(x) - *(float*)&expHack);*/
-        if (fn[sevenBits] + (tempSeed + seed) * 2.32830643654e-10f * (fn[sevenBits - 1] - fn[sevenBits]) < exp(-0.5f * x * x))
+        randomInt = int32_t(-6281210 * x * x) + 0x3f800000;
+        if (fn[sevenBits] + (tempSeed + seed) * 2.32830643654e-10f * (fn[sevenBits - 1] - fn[sevenBits]) < *(float*)&randomInt)
             return x;
-        /*expHack = int32_t(12135920 * -0.5 * x * x) + 0x3f800000;
-        if (fn[sevenBits] + (tempSeed + seed) * 2.32830643654e-10f * (fn[sevenBits - 1] - fn[sevenBits]) < *(float*)&expHack)
-            return x;*/
     }
 }
 
 int main()
 {
-	/*uint32_t tempSeed;
+	uint32_t tempSeed;
 	float erravg = 0.0f;
 	const uint32_t samples = 100000000;
     uint32_t seed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
@@ -100,16 +95,16 @@ int main()
         seed = (seed ^ (seed << 13));
         seed = (seed ^ (seed >> 17));
         seed = (seed ^ (seed << 5));
-        float x = (seed + tempSeed) * 2.32830643654e-10f;
+        float x = (seed + tempSeed) * 2.32830643654e-10f * -3;
 
-        int expHack = (int(x * 12135920) + 0x3f800000);
+        int expHack = (int(x * 12562220) + 0x3f800000);
         erravg += abs(exp(x) - *(float*)&expHack);
     }
 	printf("%f\n", erravg / samples);
     
-    return 0;*/
+    return 0;
     
-	uint32_t seed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+	/*uint32_t seed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 	uint32_t kn[128];
 	float fn[128];
 	float wn[128];
@@ -141,5 +136,5 @@ int main()
 	}
 	printf("----------------------------------------\n");
 
-	return 0;
+	return 0;*/
 }
