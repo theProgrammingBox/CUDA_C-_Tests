@@ -76,7 +76,7 @@ float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], 
         seed = (seed ^ (seed << 13));
         seed = (seed ^ (seed >> 17));
         seed = (seed ^ (seed << 5));
-        randomInt = int32_t(-6281210 * x * x) + 0x3f800000;
+        randomInt = -6281210 * int32_t(x * x) + 0x3f800000;
         if (fn[sevenBits] + (tempSeed + seed) * 2.32830643654e-10f * (fn[sevenBits - 1] - fn[sevenBits]) < *(float*)&randomInt)
             return x;
     }
