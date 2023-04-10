@@ -15,34 +15,37 @@ void randomNormalSetup(uint32_t kn[128], float fn[128], float wn[128])
     wn[127] = dn / m1;
 
     fn[0] = 1.0;
-    fn[127] = (float)(exp(-0.5 * dn * dn));
+    fn[127] = exp(-0.5 * dn * dn);
 
     double tn = 3.442619855899;
     for (uint8_t i = 126; 1 <= i; i--)
     {
         dn = sqrt(-2.0 * log(vn / dn + exp(-0.5 * dn * dn)));
         kn[i + 1] = dn / tn * m1;
-        tn = dn;
         fn[i] = exp(-0.5 * dn * dn);
         wn[i] = dn / m1;
+        tn = dn;
     }
 }
 
 float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], const float wn[128])
 {
-    uint32_t tempSeed = seed;
-    seed = (seed ^ (seed << 13));
-    seed = (seed ^ (seed >> 17));
-    seed = (seed ^ (seed << 5));
-    int32_t randomInt = tempSeed + seed;
-    uint32_t sevenBits = randomInt & 127;
-
-    if (randomInt < kn[sevenBits] || randomInt & 0x80000000 && ~randomInt + 1 < kn[sevenBits])
-        return wn[sevenBits] * randomInt;
-
+    uint32_t tempSeed;
+    int32_t randomInt;
+    uint8_t sevenBits;
     float x, y;
+
     for (;;)
     {
+        tempSeed = seed;
+        seed = (seed ^ (seed << 13));
+        seed = (seed ^ (seed >> 17));
+        seed = (seed ^ (seed << 5));
+        randomInt = tempSeed + seed;
+        sevenBits = randomInt & 0x7f;
+        if (randomInt < kn[sevenBits] || randomInt & 0x80000000 && ~randomInt + 1 < kn[sevenBits])
+            return wn[sevenBits] * randomInt;
+
         if (sevenBits == 0)
         {
             for (;;)
@@ -60,11 +63,7 @@ float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], 
                 y = -log((tempSeed + seed) * 2.32830643654e-10f);
 
                 if (x * x <= y + y)
-                {
-                    if (randomInt & 0x80000000)
-                        return -3.442620f - x;
-                    return 3.442620f + x;
-                }
+                    return ((randomInt & 0x2) - 1) * (3.442620f + x);
             }
         }
 
@@ -75,15 +74,6 @@ float randomNormal(uint32_t& seed, const uint32_t kn[128], const float fn[128], 
         seed = (seed ^ (seed << 5));
         if (fn[sevenBits] + (tempSeed + seed) * 2.32830643654e-10f * (fn[sevenBits - 1] - fn[sevenBits]) < exp(-0.5f * x * x))
             return x;
-
-        tempSeed = seed;
-        seed = (seed ^ (seed << 13));
-        seed = (seed ^ (seed >> 17));
-        seed = (seed ^ (seed << 5));
-        randomInt = tempSeed + seed;
-        sevenBits = randomInt & 127;
-        if (randomInt < kn[sevenBits] || randomInt & 0x80000000 && ~randomInt + 1 < kn[sevenBits])
-            return wn[sevenBits] * randomInt;
     }
 }
 
@@ -96,7 +86,6 @@ int main()
 
 	randomNormalSetup(kn, fn, wn);
 
-    // histogram
     const uint32_t bins = 56;
 	const uint32_t samples = 1000000;
     uint32_t hist[bins];
@@ -104,26 +93,19 @@ int main()
 	float max = 3.0f;
 	float bin_width = (max - min) / bins;
     const float scale = 1000.0f / samples;
-
     
 	memset(hist, 0, sizeof(hist));
-    
 	for (uint32_t i = 0; i < samples; i++)
 	{
-		float value = randomNormal(seed, kn, fn, wn);
-		uint32_t bin = (uint32_t)((value - min) / bin_width);
-		if (bin < bins)
-		{
+		uint32_t bin = (randomNormal(seed, kn, fn, wn) - min) / bin_width;
+		if (bin < bins && bin >= 0)
 			hist[bin]++;
-		}
 	}
     
 	for (uint32_t i = 0; i < bins; i++)
 	{
 		for (uint32_t j = scale * hist[i]; j--;)
-		{
 			printf("*");
-		}
 		printf("\n");
 	}
 
