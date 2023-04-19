@@ -1,5 +1,7 @@
-#include <iostream>
-#include <chrono>
+﻿#define OLC_PGE_APPLICATION
+#include "olcPixelGameEngine.h"
+#include <vector>
+#include <memory>
 
 int main()
 {
