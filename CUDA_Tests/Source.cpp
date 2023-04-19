@@ -1,120 +1,45 @@
 ﻿#define OLC_PGE_APPLICATION
 #include "olcPixelGameEngine.h"
-#include <vector>
-#include <memory>
+
+uint32_t Lehmer32(uint64_t seed, uint64_t subsequence = 0)
+{
+	uint64_t tmp = (seed + 0xe120fc15) * 0x4a39b70d;
+	tmp = (tmp >> 32 ^ tmp) * 0x12fad5c9;
+	return tmp >> 32 ^ tmp;
+}
+
+class Example : public olc::PixelGameEngine
+{
+public:
+	Example()
+	{
+		sAppName = "Example";
+	}
+	
+	bool OnUserCreate() override
+	{
+		float ratio = 0;
+		for (int x = 0; x < ScreenWidth(); x++)
+			for (int y = 0; y < ScreenHeight(); y++)
+			{
+				bool bPixel = Lehmer32(x * ScreenHeight() + y) & 3;
+				ratio += bPixel;
+				Draw(x, y, bPixel ? olc::BLACK : olc::WHITE);
+			}
+		printf("Ratio: %f\n", ratio / (ScreenWidth() * ScreenHeight()));
+		return true;
+	}
+
+	bool OnUserUpdate(float fElapsedTime) override
+	{
+		return true;
+	}
+};
 
 int main()
 {
-	const uint32_t samples = 1000000000;
-	uint32_t seed = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-	int32_t temp;
-	int32_t constSeed;
-	uint32_t count;
-	for (uint8_t i = samples; i--;)
-	{
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-	}
-
-	count = 0;
-	auto start = std::chrono::high_resolution_clock::now();
-	for (uint32_t i = samples; i--;)
-	{
-		constSeed = seed;
-		temp = seed;
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-		temp += seed;
-		count += abs(temp) < constSeed;
-	}
-	auto end = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<double> elapsed = end - start;
-	printf("Time: %f, count: %d\n", elapsed.count(), count);
-
-	count = 0;
-	start = std::chrono::high_resolution_clock::now();
-	for (uint32_t i = samples; i--;)
-	{
-		constSeed = seed;
-		temp = seed;
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-		temp += seed;
-		count += (temp ^ (temp >> 31)) - (temp >> 31) < constSeed;
-	}
-	end = std::chrono::high_resolution_clock::now();
-	elapsed = end - start;
-	printf("Time: %f, count: %d\n", elapsed.count(), count);
-
-	count = 0;
-	start = std::chrono::high_resolution_clock::now();
-	for (uint32_t i = samples; i--;)
-	{
-		constSeed = seed;
-		temp = seed;
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-		temp += seed;
-		count += abs(temp) < constSeed;
-	}
-	end = std::chrono::high_resolution_clock::now();
-	elapsed = end - start;
-	printf("Time: %f, count: %d\n", elapsed.count(), count);
-
-	count = 0;
-	start = std::chrono::high_resolution_clock::now();
-	for (uint32_t i = samples; i--;)
-	{
-		constSeed = seed;
-		temp = seed;
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-		temp += seed;
-		count += (temp ^ (temp >> 31)) - (temp >> 31) < constSeed;
-	}
-	end = std::chrono::high_resolution_clock::now();
-	elapsed = end - start;
-	printf("Time: %f, count: %d\n", elapsed.count(), count);
-
-	count = 0;
-	start = std::chrono::high_resolution_clock::now();
-	for (uint32_t i = samples; i--;)
-	{
-		constSeed = seed;
-		temp = seed;
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-		temp += seed;
-		count += abs(temp) < constSeed;
-	}
-	end = std::chrono::high_resolution_clock::now();
-	elapsed = end - start;
-	printf("Time: %f, count: %d\n", elapsed.count(), count);
-
-	count = 0;
-	start = std::chrono::high_resolution_clock::now();
-	for (uint32_t i = samples; i--;)
-	{
-		constSeed = seed;
-		temp = seed;
-		seed ^= seed << 13;
-		seed ^= seed >> 17;
-		seed ^= seed << 5;
-		temp += seed;
-		count += (temp ^ (temp >> 31)) - (temp >> 31) < constSeed;
-	}
-	end = std::chrono::high_resolution_clock::now();
-	elapsed = end - start;
-	printf("Time: %f, count: %d\n", elapsed.count(), count);
-	
+	Example demo;
+	if (demo.Construct(1440, 810, 1, 1))
+		demo.Start();
 	return 0;
 }
