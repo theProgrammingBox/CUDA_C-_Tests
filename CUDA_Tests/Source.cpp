@@ -31,18 +31,31 @@ public:
 		return true;
 	}
 
+	uint32_t murmur_32_scramble(uint32_t k) {
+		k *= 0xcc9e2d51;
+		k = (k << 15) | (k >> 17);
+		k *= 0x1b873593;
+		return k;
+	}
+
 	void rng()
 	{
 		uint64_t subsequence = 0;
 		for (int x = 0; x < ScreenWidth(); x++)
 			for (int y = 0; y < ScreenHeight(); y++)
 			{
-				uint64_t tmp = (subsequence ^ 0xe120fc15) * 0x4a39b70d;
-				tmp = (tmp >> 32 ^ tmp ^ (seed ^ 0xe120fc15) * 0x4a39b70d) * 0x12fad5c9;
-				tmp = (tmp >> 32 ^ tmp) * 0x12fad5c9;
-				tmp ^= tmp >> 32;
+				uint32_t h = murmur_32_scramble(subsequence);
+				h = (h << 13) | (h >> 19);
+				h = h * 5 + 0xe6546b64;
+				h ^= murmur_32_scramble(seed);
+				h ^= h >> 16;
+				h *= 0x85ebca6b;
+				h ^= h >> 13;
+				h *= 0xc2b2ae35;
+				h ^= h >> 16;
+				
 				subsequence++;
-				Draw(x, y, olc::PixelF(tmp & 0x1, tmp & 0x1, tmp & 0x1));
+				Draw(x, y, olc::PixelF(h & 0x1, h & 0x1, h & 0x1));
 			}
 	}
 };
