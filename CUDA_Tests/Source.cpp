@@ -44,39 +44,45 @@ public:
 		seed = std::chrono::system_clock::now().time_since_epoch().count();
 		offset = std::chrono::system_clock::now().time_since_epoch().count();
 
+		const float special1 = -1.1641532183e-10f;
+		const float special2 = -22.1807097779f;
+		const uint32_t idx = 1;
+		uint32_t seed1 = 14554362;
+		uint32_t seed2 = 142343152;
 
-		int32_t kn2[128];
-		float fn2[128];
-		float wn2[128];
-		r4_nor2_setup(kn2, fn2, wn2);
+		seed1 = (0xE558D374 ^ idx + seed1 ^ seed2) * 0xAA69E974;
+		seed1 = (seed1 >> 13 ^ seed1) * 0x8B7A1B65;
 
-		// now printing the arrays in hex, format so that it can be copy pasted into the kernel
-		printf("int32_t kn2[128] = {");
-		for (int i = 0; i < 128; ++i)
+		uint16_t u1 = ((uint16_t*)&seed1)[0];
+		uint16_t u2 = ((uint16_t*)&seed1)[1];
+
+		uint32_t s = u1 * u1 + u2 * u2;
+
+		while (s >= 0x10000 || s == 0)
 		{
-			if (i % 8 == 0)
-				printf("\n\t");
-			printf("0x%08x, ", kn2[i]);
+			seed1 = (seed1 >> 13 ^ seed1) * 0x8B7A1B65;
+			u1 = ((uint16_t*)&seed1)[0];
+			u2 = ((uint16_t*)&seed1)[1];
+			s = u1 * u1 + u2 * u2;
 		}
-		printf("\n};\n\n");
+		printf("%f\n", u1 / 65535.0f);
+		printf("%f\n", u2 / 65535.0f);
 
-		printf("float fn2[128] = {");
-		for (int i = 0; i < 128; ++i)
-		{
-			if (i % 8 == 0)
-				printf("\n\t");
-			printf("0x%08x, ", *(int32_t*)&fn2[i]);
-		}
-		printf("\n};\n\n");
+		printf("%u\n", u1);
+		printf("%u\n", u2);
+		printf("%u\n", s);
 
-		printf("float wn2[128] = {");
-		for (int i = 0; i < 128; ++i)
-		{
-			if (i % 8 == 0)
-				printf("\n\t");
-			printf("0x%08x, ", *(int32_t*)&wn2[i]);
-		}
-		printf("\n};\n\n");
+		const float r = special1 * s / (logf(s) + special2);
+		printf("%f\n", r);
+		printf("%f\n", special1 * s);
+		printf("%f\n", logf(s) + special2);
+
+		uint32_t i = 0x5F1FFFF9 - (*(uint32_t*)&r >> 1);
+		float tmp = *(float*)&i;
+		tmp *= 0.0000107414589386f * (2.38924456f - r * tmp * tmp);
+
+		printf("%f\n", tmp * u1);
+		printf("%f\n", tmp * u2);
 
 		return true;
 	}
