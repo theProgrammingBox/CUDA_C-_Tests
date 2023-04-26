@@ -1,116 +1,61 @@
-﻿#define OLC_PGE_APPLICATION
-#include "olcPixelGameEngine.h"
+﻿#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <time.h>
+#include <iostream>
 
-void r4_nor2_setup(int32_t kn[128], float fn[128], float wn[128])
-{
-	double dn = 3.442619855899;
-	const double m1 = 2147483648.0;
-	const double vn = 9.91256303526217E-03;
-	double q = vn / exp(-0.5 * dn * dn);
+#define NUM_SAMPLES 1000000
+#define NUM_BINS 100
 
-	kn[0] = dn / q * m1;
-	kn[1] = 0;
-	wn[0] = q / m1;
-	wn[127] = dn / m1;
-	fn[0] = 1.0;
-	fn[127] = exp(-0.5 * dn * dn);
-
-	double tn;
-	for (uint8_t i = 126; 1 <= i; i--)
-	{
-		tn = dn;
-		dn = sqrt(-2.0 * log(vn / dn + exp(-0.5 * dn * dn)));
-		kn[i + 1] = dn / tn * m1;
-		fn[i] = exp(-0.5 * dn * dn);
-		wn[i] = dn / m1;
-	}
-
-	return;
+double uniform_random_range(double min, double max) {
+    double u = (double)rand() / (double)RAND_MAX;
+    return min + u * (max - min);
 }
 
-class Example : public olc::PixelGameEngine
-{
-public:
-	uint32_t seed;
-	uint32_t offset;
+double marsaglia_polar_s() {
+    double u, v, s;
+    /*do {
+        u = uniform_random_range(-1.0, 1.0);
+        v = uniform_random_range(-1.0, 1.0);
+        s = u * u + v * v;
+    } while (s >= 1.0 || s == 0.0);
+    double factor = sqrt(-2.0 * log(s) / s);
+    return u * factor * 0.1f + 0.5f;*/
 
-	Example()
-	{
-		sAppName = "Example";
-	}
+    /*s = uniform_random_range(0.0, 1.0);
+    double factor = sqrt(-2.0 * log(s) / s);
+    return uniform_random_range(-1.0, 1.0) * factor * 0.1f + 0.5f;*/
+    do {
+        u = uniform_random_range(-1.0, 1.0);
+        v = uniform_random_range(-1.0, 1.0);
+        s = u * u + v * v;
+    } while (s >= 1.0 || s == 0.0);
+    return u * 0.5 + 0.5;
+}
 
-	bool OnUserCreate() override
-	{
-		seed = std::chrono::system_clock::now().time_since_epoch().count();
-		offset = std::chrono::system_clock::now().time_since_epoch().count();
+int main() {
+    srand(time(NULL));
 
-		const float special1 = -1.1641532183e-10f;
-		const float special2 = -22.1807097779f;
-		const uint32_t idx = 1;
-		uint32_t seed1 = 14554362;
-		uint32_t seed2 = 142343152;
+    uint32_t histogram[NUM_BINS] = { 0 };
+    float scale = (float)NUM_BINS / NUM_SAMPLES * 20;
 
-		seed1 = (0xE558D374 ^ idx + seed1 ^ seed2) * 0xAA69E974;
-		seed1 = (seed1 >> 13 ^ seed1) * 0x8B7A1B65;
-
-		uint16_t u1 = ((uint16_t*)&seed1)[0];
-		uint16_t u2 = ((uint16_t*)&seed1)[1];
-
-		uint32_t s = u1 * u1 + u2 * u2;
-
-		while (s >= 0x10000 || s == 0)
-		{
-			seed1 = (seed1 >> 13 ^ seed1) * 0x8B7A1B65;
-			u1 = ((uint16_t*)&seed1)[0];
-			u2 = ((uint16_t*)&seed1)[1];
-			s = u1 * u1 + u2 * u2;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        double s = marsaglia_polar_s();
+        int bin_index = (int)(s * NUM_BINS);
+        if (bin_index < NUM_BINS && bin_index >= 0) {
+            histogram[bin_index]++;
 		}
-		printf("%f\n", u1 / 65535.0f);
-		printf("%f\n", u2 / 65535.0f);
+    }
 
-		printf("%u\n", u1);
-		printf("%u\n", u2);
-		printf("%u\n", s);
+    printf("Histogram of s values:\n");
+    printf("Bin\tFrequency\n");
 
-		const float r = special1 * s / (logf(s) + special2);
-		printf("%f\n", r);
-		printf("%f\n", special1 * s);
-		printf("%f\n", logf(s) + special2);
+    for (int i = 0; i < NUM_BINS; i++) {
+        for (int j = 0; j < histogram[i] * scale; j++) {
+			printf("*");
+		}
+        		printf("\n");
+    }
 
-		uint32_t i = 0x5F1FFFF9 - (*(uint32_t*)&r >> 1);
-		float tmp = *(float*)&i;
-		tmp *= 0.0000107414589386f * (2.38924456f - r * tmp * tmp);
-
-		printf("%f\n", tmp * u1);
-		printf("%f\n", tmp * u2);
-
-		return true;
-	}
-
-	bool OnUserUpdate(float fElapsedTime) override
-	{
-		uint32_t idx = offset;
-		for (int x = 0; x < ScreenWidth(); ++x)
-			for (int y = 0; y < ScreenHeight(); ++y)
-			{
-				uint16_t* idx2 = (uint16_t*)&idx;
-				uint16_t* offset2 = (uint16_t*)&offset;
-				uint16_t* seed2 = (uint16_t*)&seed;
-				uint16_t h = (0xE558 ^ idx2[0] + idx2[1] ^ offset2[0] + offset2[1] + seed2[0] ^ seed2[1]) * 0x9E97;
-				h = (h >> 7 ^ h) * 0x7A1B;
-				Draw(x, y, olc::PixelF(((uint8_t*)&h)[0], ((uint8_t*)&h)[1], ((uint8_t*)&h)[0]));
-				++idx;
-			}
-		seed += 0xA8835963;
-		offset += 0x8B7A1B65;
-		return true;
-	}
-};
-
-int main()
-{
-	Example demo;
-	if (demo.Construct(1536, 768, 1, 1))
-		demo.Start();
-	return 0;
+    return 0;
 }
