@@ -5,7 +5,7 @@
 #include <iostream>
 
 #define NUM_SAMPLES 1000000
-#define NUM_BINS 24
+#define NUM_BINS 100
 
 double uniform_random_range(double min, double max) {
     double u = (double)rand() / (double)RAND_MAX;
@@ -13,12 +13,12 @@ double uniform_random_range(double min, double max) {
 }
 
 double marsaglia_polar_s() {
-    double u, v, s;
+    /*double u, v, s;
     do {
         u = uniform_random_range(-1.0, 1.0);
         v = uniform_random_range(-1.0, 1.0);
         s = u * u + v * v;
-    } while (s >= 1.0 || s == 0.0);
+    } while (s >= 1.0 || s == 0.0);*/
     /*double factor = sqrt(-2.0 * log(s) / s);
     return u * factor * 0.1f + 0.5f;*/
 
@@ -32,15 +32,19 @@ double marsaglia_polar_s() {
     } while (s >= 1.0 || s == 0.0);*/
     //return u * 0.5 + 0.5;
     //s = uniform_random_range(0.0, 1.0);
-    return u * sqrt(-2 * logf(s) / s) * 0.5 + 0.5;
-    //return sqrt(uniform_random_range(0.0, 0.1)) + sqrt(uniform_random_range(0.0, 0.1));
+    //return u * sqrt(-2 * logf(s) / s) * 0.2 + 0.5;
+    float u = sqrt(uniform_random_range(0.0, 1.0));
+    float v = sqrt(uniform_random_range(0.0, 1.0));
+    float a = sqrt(uniform_random_range(0.0, 1.0));
+    float b = sqrt(uniform_random_range(0.0, 1.0));
+    return (v + u - a - b) * 0.2 + 0.5;
 }
 
 int main() {
     srand(time(NULL));
 
     uint32_t histogram[NUM_BINS] = { 0 };
-    float scale = (float)NUM_BINS / NUM_SAMPLES * 20;
+    float scale = (float)NUM_BINS / NUM_SAMPLES * 16;
 
     for (int i = 0; i < NUM_SAMPLES; i++) {
         double s = marsaglia_polar_s();
@@ -54,10 +58,11 @@ int main() {
     printf("Bin\tFrequency\n");
 
     for (int i = 0; i < NUM_BINS; i++) {
+        printf("%u\t", i);
         for (int j = 0; j < histogram[i] * scale; j++) {
 			printf("*");
 		}
-        		printf("\n");
+        printf("\n");
     }
 
     return 0;
