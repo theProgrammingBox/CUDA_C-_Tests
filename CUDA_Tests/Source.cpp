@@ -1,16 +1,16 @@
 ﻿#define OLC_PGE_APPLICATION
 #include "olcPixelGameEngine.h"
 
-// Override base class with your custom functionality
 class Example : public olc::PixelGameEngine
 {
 public:
 	const float reward = 1;
 	const float discount = 0.99f;
-	const float limit = reward / (1 - discount);
+	const float invLimit = (1 - discount) / reward;
 	static const int samples = 1800;
 	float rewards[samples];
 	int idx;
+	float middle;
 
 	Example()
 	{
@@ -21,6 +21,7 @@ public:
 	{
 		memset(rewards, 0, sizeof(rewards));
 		idx = 0;
+		middle = ScreenHeight() * 0.5f;
 		return true;
 	}
 
@@ -44,15 +45,15 @@ public:
 		float discount_reward = 0;
 		for (int i = samples; i--;)
 		{
-
 			discount_reward = rewards[idx] + discount * discount_reward;
 			
-			int red = 255 * std::min(std::max(-discount_reward / limit + 1.0f, 0.0f), 1.0f);
-			int green = 255 * std::min(std::max(discount_reward / limit + 1.0f, 0.0f), 1.0f);
-			int blue = 255 * std::max(1 - abs(discount_reward / limit), 0.0f);
+			float norm = discount_reward * invLimit;
+			int red = 255 * std::min(std::max(1.0f - norm, 0.0f), 1.0f);
+			int green = 255 * std::min(std::max(1.0f + norm, 0.0f), 1.0f);
+			int blue = 255 * std::max(1.0f - abs(norm), 0.0f);
 			olc::Pixel color = olc::Pixel(red, green, blue);
 			
-			Draw(i, ScreenHeight() / 2 - discount_reward, color);
+			Draw(i, middle - discount_reward, color);
 			
 			idx++;
 			idx *= idx < samples;
