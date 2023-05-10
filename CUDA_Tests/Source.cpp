@@ -1,64 +1,66 @@
-﻿#include <stdio.h>
-#include <stdlib.h>
-#include <math.h>
-#include <time.h>
-#include <iostream>
+﻿#define OLC_PGE_APPLICATION
+#include "olcPixelGameEngine.h"
 
-#define NUM_SAMPLES 1000000
-#define NUM_BINS 24
+// Override base class with your custom functionality
+class Example : public olc::PixelGameEngine
+{
+public:
+	const float discount = 0.99f;
+	static const int samples = 200;
+	float rewards[samples];
+	int idx;
 
-double uniform_random_range(double min, double max) {
-    double u = (double)rand() / (double)RAND_MAX;
-    return min + u * (max - min);
-}
+	Example()
+	{
+		sAppName = "Example";
+	}
 
-double marsaglia_polar_s() {
-    double u, v, s;
-    do {
-        u = uniform_random_range(-1.0, 1.0);
-        v = uniform_random_range(-1.0, 1.0);
-        s = u * u + v * v;
-    } while (s >= 1.0 || s == 0.0);
-    /*double factor = sqrt(-2.0 * log(s) / s);
-    return u * factor * 0.1f + 0.5f;*/
+	bool OnUserCreate() override
+	{
+		memset(rewards, 0, sizeof(rewards));
+		idx = 0;
+		return true;
+	}
 
-    /*s = uniform_random_range(0.0, 1.0);
-    double factor = sqrt(-2.0 * log(s) / s);
-    return uniform_random_range(-1.0, 1.0) * factor * 0.1f + 0.5f;*/
-    /*do {
-        u = uniform_random_range(-1.0, 1.0);
-        v = uniform_random_range(-1.0, 1.0);
-        s = u * u + v * v;
-    } while (s >= 1.0 || s == 0.0);*/
-    //return u * 0.5 + 0.5;
-    //s = uniform_random_range(0.0, 1.0);
-    return u * sqrt(-2 * logf(s) / s) * 0.5 + 0.5;
-    //return sqrt(uniform_random_range(0.0, 0.1)) + sqrt(uniform_random_range(0.0, 0.1));
-}
-
-int main() {
-    srand(time(NULL));
-
-    uint32_t histogram[NUM_BINS] = { 0 };
-    float scale = (float)NUM_BINS / NUM_SAMPLES * 20;
-
-    for (int i = 0; i < NUM_SAMPLES; i++) {
-        double s = marsaglia_polar_s();
-        int bin_index = (int)(s * NUM_BINS);
-        if (bin_index < NUM_BINS && bin_index >= 0) {
-            histogram[bin_index]++;
+	bool OnUserUpdate(float fElapsedTime) override
+	{
+		// if up, add 1 reward to front, if down, add -1 reward to front
+		if (GetKey(olc::Key::UP).bPressed)
+		{
+			rewards[idx] = 1;
 		}
-    }
-
-    printf("Histogram of s values:\n");
-    printf("Bin\tFrequency\n");
-
-    for (int i = 0; i < NUM_BINS; i++) {
-        for (int j = 0; j < histogram[i] * scale; j++) {
-			printf("*");
+		else if (GetKey(olc::Key::DOWN).bPressed)
+		{
+			rewards[idx] = -1;
 		}
-        		printf("\n");
-    }
+		else
+		{
+			rewards[idx] = 0;
+		}
 
-    return 0;
+		//cycle the arr
+		idx++;
+		idx *= idx >= samples;
+
+		// calculate discount reward
+		float discount_reward = 0;
+		for (int i = samples; i--;)
+		{
+			idx--;
+			idx += (idx < 0) * samples;
+			discount_reward += rewards[idx] + discount * discount_reward;
+			Draw(i, 120 - discount_reward * 100, olc::Pixel(255, 255, 255));
+			printf("%f\n", discount_reward);
+		}
+
+		return true;
+	}
+};
+
+int main()
+{
+	Example demo;
+	if (demo.Construct(256, 240, 4, 4))
+		demo.Start();
+	return 0;
 }
