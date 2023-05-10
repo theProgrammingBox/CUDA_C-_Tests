@@ -12,11 +12,6 @@ public:
 	int idx;
 	float middle;
 
-	Example()
-	{
-		sAppName = "Example";
-	}
-
 	bool OnUserCreate() override
 	{
 		memset(rewards, 0, sizeof(rewards));
@@ -29,7 +24,7 @@ public:
 	{
 		Clear(olc::BLACK);
 
-		rewards[idx] = GetKey(olc::Key::UP).bHeld * reward + GetKey(olc::Key::DOWN).bHeld * -reward;
+		rewards[idx] = (GetKey(olc::Key::UP).bHeld - GetKey(olc::Key::DOWN).bHeld) * reward;
 		
 		float discount_reward = 0;
 		for (int i = samples; i--;)
@@ -37,8 +32,8 @@ public:
 			discount_reward = rewards[idx] + discount * discount_reward;
 			
 			float norm = discount_reward * invLimit;
-			int red = 255 * std::min(std::max(1.0f - norm, 0.0f), 1.0f);
-			int green = 255 * std::min(std::max(1.0f + norm, 0.0f), 1.0f);
+			int red = 255 * std::max(std::min(1.0f - norm, 1.0f), 0.0f);
+			int green = 255 * std::max(std::min(1.0f + norm, 1.0f), 0.0f);
 			int blue = 255 * std::max(1.0f - abs(norm), 0.0f);
 			olc::Pixel color = olc::Pixel(red, green, blue);
 			
