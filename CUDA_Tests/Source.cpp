@@ -6,7 +6,7 @@ class Example : public olc::PixelGameEngine
 {
 public:
 	const float discount = 0.99f;
-	static const int samples = 200;
+	static const int samples = 1800;
 	float rewards[samples];
 	int idx;
 
@@ -24,12 +24,15 @@ public:
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
+		// clear screen
+		Clear(olc::BLACK);
+
 		// if up, add 1 reward to front, if down, add -1 reward to front
-		if (GetKey(olc::Key::UP).bPressed)
+		if (GetKey(olc::Key::UP).bHeld)
 		{
 			rewards[idx] = 1;
 		}
-		else if (GetKey(olc::Key::DOWN).bPressed)
+		else if (GetKey(olc::Key::DOWN).bHeld)
 		{
 			rewards[idx] = -1;
 		}
@@ -38,20 +41,30 @@ public:
 			rewards[idx] = 0;
 		}
 
-		//cycle the arr
-		idx++;
-		idx *= idx >= samples;
-
 		// calculate discount reward
-		float discount_reward = 0;
+		float discount_reward = rewards[idx];
+
+		//cycle the arr
+		idx--;
+		idx += (idx < 0) * samples;
+
 		for (int i = samples; i--;)
 		{
-			idx--;
-			idx += (idx < 0) * samples;
-			discount_reward += rewards[idx] + discount * discount_reward;
-			Draw(i, 120 - discount_reward * 100, olc::Pixel(255, 255, 255));
-			printf("%f\n", discount_reward);
+			idx++;
+			idx *= idx < samples;
+
+			discount_reward = rewards[idx] + discount * discount_reward;
+			// red if negative, green if positive, color gradient
+			// red 255 - 255 - 0
+			// green 0 - 255 - 255
+			const float limit = 200.0f;
+			float red = 255 * std::max(-discount_reward / limit, 0.0f);
+			float green = 255 * std::max(discount_reward / limit, 0.0f);
+			olc::Pixel p = olc::Pixel(red, green, 0);
+			Draw(i, 400 - discount_reward, p);
+			//printf("%f\n", discount_reward);
 		}
+
 
 		return true;
 	}
@@ -60,7 +73,7 @@ public:
 int main()
 {
 	Example demo;
-	if (demo.Construct(256, 240, 4, 4))
+	if (demo.Construct(1800, 800, 1, 1))
 		demo.Start();
 	return 0;
 }
