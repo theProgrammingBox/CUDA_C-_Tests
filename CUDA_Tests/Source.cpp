@@ -28,19 +28,8 @@ public:
 	bool OnUserUpdate(float fElapsedTime) override
 	{
 		Clear(olc::BLACK);
-		
-		if (GetKey(olc::Key::UP).bHeld)
-		{
-			rewards[idx] = reward;
-		}
-		else if (GetKey(olc::Key::DOWN).bHeld)
-		{
-			rewards[idx] = -reward;
-		}
-		else
-		{
-			rewards[idx] = 0;
-		}
+
+		rewards[idx] = GetKey(olc::Key::UP).bHeld * reward + GetKey(olc::Key::DOWN).bHeld * -reward;
 		
 		float discount_reward = 0;
 		for (int i = samples; i--;)
