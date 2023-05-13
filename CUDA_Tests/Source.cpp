@@ -17,13 +17,21 @@ struct Param4D
 		this->batches = batches;
 	}
 
-	Param4D(const Param4D* other)
+	/*Param4D(const Param4D* other)
 	{
 		this->height = other->height;
 		this->width = other->width;
 		this->channels = other->channels;
 		this->batches = other->batches;
-	}
+	}*/
+
+	/*Param4D(const Param4D& other)
+	{
+		this->height = other.height;
+		this->width = other.width;
+		this->channels = other.channels;
+		this->batches = other.batches;
+	}*/
 
 	void Print() const
 	{
@@ -35,6 +43,8 @@ int main()
 {
 	Param4D param = { 64 };
 	Param4D* parameter = new Param4D(param);
-	Param4D* parameter2 = new Param4D(parameter);
-	parameter->Print();
+	//Param4D* parameter2 = new Param4D(parameter);
+
+	Param4D moveParam = param;
+	moveParam.Print();
 }
