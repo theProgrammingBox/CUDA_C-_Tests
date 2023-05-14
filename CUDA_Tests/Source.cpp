@@ -1,50 +1,68 @@
-﻿#include <iostream>
-#include <assert.h>
+﻿#define OLC_PGE_APPLICATION
+#include "olcPixelGameEngine.h"
 
-struct Param4D
+class Example : public olc::PixelGameEngine
 {
-	uint32_t height;
-	uint32_t width;
-	uint32_t channels;
-	uint32_t batches;
+public:
+	const float reward = 1;
+	const float discount = 0.99f;
+	const float lamda = 0.95f;
+	const float invLimit = (1 - discount) / reward;
+	static const int samples = 1800;
+	float rewards[samples];
+	int idx;
+	float middle;
 
-	Param4D(uint32_t height = 1, uint32_t width = 1, uint32_t channels = 1, uint32_t batches = 1)
+	bool OnUserCreate() override
 	{
-		assert(height > 0 && width > 0 && channels > 0 && batches > 0);
-		this->height = height;
-		this->width = width;
-		this->channels = channels;
-		this->batches = batches;
+		memset(rewards, 0, sizeof(rewards));
+		idx = 0;
+		middle = ScreenHeight() * 0.5f;
+		return true;
 	}
 
-	/*Param4D(const Param4D* other)
+	bool OnUserUpdate(float fElapsedTime) override
 	{
-		this->height = other->height;
-		this->width = other->width;
-		this->channels = other->channels;
-		this->batches = other->batches;
-	}*/
+		Clear(olc::BLACK);
 
-	/*Param4D(const Param4D& other)
-	{
-		this->height = other.height;
-		this->width = other.width;
-		this->channels = other.channels;
-		this->batches = other.batches;
-	}*/
+		rewards[idx] = (GetKey(olc::Key::UP).bHeld - GetKey(olc::Key::DOWN).bHeld) * reward;
 
-	void Print() const
-	{
-		printf("(%u, %u, %u, %u)\n", height, width, channels, batches);
+		float discount_reward = 0;
+		float advantage = 0;
+		float value = 0;
+		for (int i = samples; i--;)
+		{
+			discount_reward = rewards[idx] + discount * discount_reward;
+			advantage = rewards[idx] + discount * value - rewards[idx] + discount * lamda * advantage;
+			value = rewards[idx];
+
+			float norm = discount_reward * invLimit;
+			float normAdv = advantage * invLimit;
+
+			int red = 255 * std::max(std::min(1.0f - norm, 1.0f), 0.0f);
+			int green = 255 * std::max(std::min(1.0f + norm, 1.0f), 0.0f);
+			int blue = 255 * std::max(1.0f - abs(norm), 0.0f);
+			Draw(i, middle - discount_reward, olc::Pixel(red, green, blue));
+
+			red = 255 * std::max(std::min(1.0f - normAdv, 1.0f), 0.0f);
+			green = 255 * std::max(std::min(1.0f + normAdv, 1.0f), 0.0f);
+			blue = 255 * std::max(1.0f - abs(normAdv), 0.0f);
+			Draw(i, middle - advantage, olc::Pixel(red, green, blue));
+
+			idx++;
+			idx *= idx < samples;
+		}
+		idx--;
+		idx += (idx < 0) * samples;
+
+		return true;
 	}
 };
 
 int main()
 {
-	Param4D param = { 64 };
-	Param4D* parameter = new Param4D(param);
-	//Param4D* parameter2 = new Param4D(parameter);
-
-	Param4D moveParam = param;
-	moveParam.Print();
+	Example demo;
+	if (demo.Construct(1800, 800, 1, 1))
+		demo.Start();
+	return 0;
 }
