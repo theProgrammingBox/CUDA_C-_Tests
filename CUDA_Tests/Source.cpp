@@ -32,6 +32,7 @@ public:
 		float value = 0;
 		for (int i = samples; i--;)
 		{
+			// test
 			discount_reward = rewards[idx] + discount * discount_reward;
 			advantage = rewards[idx] + discount * value - rewards[idx] + discount * lamda * advantage;
 			value = rewards[idx];
