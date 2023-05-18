@@ -1,4 +1,4 @@
-﻿#include <iostream>
+﻿﻿#include <iostream>
 #include <fstream>
 #include <unordered_set>
 
@@ -24,22 +24,21 @@ int main()
 		file.write(reinterpret_cast<const char*>(&ptr), sizeof(ptr));
 		printf("Inserting address: %p\n", ptr);
 
-		float discount_reward = 0;
-		float advantage = 0;
-		float value = 0;
-		for (int i = samples; i--;)
-		{
-			discount_reward = rewards[idx] + discount * discount_reward;
-			advantage = rewards[idx] + discount * value - rewards[idx] + discount * lamda * advantage;
-			value = rewards[idx];
+		b = 0;
+		file.write(reinterpret_cast<const char*>(&b), sizeof(b));
+		file.write(reinterpret_cast<const char*>(&ptr), sizeof(ptr));
+		delete ptr;
+		printf("Erasing address: %p\n", ptr);
+	}
+	file.close();
+	printf("\n\n\n");
 
-			float norm = discount_reward * invLimit;
-			float normAdv = advantage * invLimit;
-
-			int red = 255 * std::max(std::min(1.0f - norm, 1.0f), 0.0f);
-			int green = 255 * std::max(std::min(1.0f + norm, 1.0f), 0.0f);
-			int blue = 255 * std::max(1.0f - abs(norm), 0.0f);
-			Draw(i, middle - discount_reward, olc::Pixel(red, green, blue));
+	std::ifstream file2("data.bin", std::ios::binary);
+	if (!file2)
+	{
+		std::cerr << "Couldn't open file for reading.\n";
+		return 1;
+	}
 
 	std::unordered_set<void*> addressSet;
 
