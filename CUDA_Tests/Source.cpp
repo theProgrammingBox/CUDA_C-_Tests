@@ -1,42 +1,81 @@
 ﻿#include <iostream>
 #include <fstream>
+#include <unordered_set>
 
 int main()
 {
-	if (false)
+
+	std::ofstream file("data.bin", std::ios::binary);
+	if (!file)
 	{
-		std::ofstream file("data.bin", std::ios::binary);
-		if (!file)
-		{
-			std::cerr << "Couldn't open file for writing.\n";
-			return 1;
-		}
+		std::cerr << "Couldn't open file for writing.\n";
+		return 1;
+	}
 
-		bool b = true;
-		void* ptr = reinterpret_cast<void*>(0x12345678);  // Just an example
+	bool b;
+	float* ptr;
 
-		for (int i = 0; i < 10; i++)
+	for (int i = 0; i < 10; i++)
+	{
+		ptr = new float(i);
+
+		b = 1;
+		file.write(reinterpret_cast<const char*>(&b), sizeof(b));
+		file.write(reinterpret_cast<const char*>(&ptr), sizeof(ptr));
+		printf("Inserting address: %p\n", ptr);
+
+		b = 0;
+		file.write(reinterpret_cast<const char*>(&b), sizeof(b));
+		file.write(reinterpret_cast<const char*>(&ptr), sizeof(ptr));
+		delete ptr;
+		printf("Erasing address: %p\n", ptr);
+	}
+	file.close();
+	printf("\n\n\n");
+
+	std::ifstream file2("data.bin", std::ios::binary);
+	if (!file2)
+	{
+		std::cerr << "Couldn't open file for reading.\n";
+		return 1;
+	}
+
+	std::unordered_set<void*> addressSet;
+
+	while (file2.read(reinterpret_cast<char*>(&b), sizeof(b)) &&
+		file2.read(reinterpret_cast<char*>(&ptr), sizeof(ptr)))
+	{
+		if (b)
 		{
-			file.write(reinterpret_cast<const char*>(&b), sizeof(b));
-			file.write(reinterpret_cast<const char*>(&ptr), sizeof(ptr));
+			addressSet.insert(ptr);
+			printf("Inserting address: %p\n", ptr);
 		}
+		else
+		{
+			if (addressSet.find(ptr) == addressSet.end())
+			{
+				printf("Double delete on address: %p\n", ptr);
+			}
+			else
+			{
+				addressSet.erase(ptr);
+				printf("Erasing address: %p\n", ptr);
+			}
+		}
+	}
+	file2.close();
+	printf("\n\n\n");
+
+	if (addressSet.empty())
+	{
+		printf("Perfect\n");
 	}
 	else
 	{
-		std::ifstream file("data.bin", std::ios::binary);
-		if (!file) {
-			std::cerr << "Couldn't open file for reading.\n";
-			return 1;
-		}
-
-		bool b;
-		void* ptr;
-
-		while (file.read(reinterpret_cast<char*>(&b), sizeof(b)) &&
-			file.read(reinterpret_cast<char*>(&ptr), sizeof(ptr)))
+		printf("Leftover\n");
+		for (auto& ptr : addressSet)
 		{
-			std::cout << "Bool: " << std::boolalpha << b << "\n";
-			std::cout << "Address: " << ptr << "\n";
+			printf("Leftover address: %p\n", ptr);
 		}
 	}
 
