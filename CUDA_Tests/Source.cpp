@@ -1,9 +1,10 @@
-﻿#include <iostrwam>
-//#include <fstream>
-//#include <unordered_set>
+﻿#include <iostream>
+#include <fstream>
+#include <unordered_set>
 
-/*int main()
+int main()
 {
+
 	std::ofstream file("data.bin", std::ios::binary);
 	if (!file)
 	{
@@ -79,4 +80,4 @@
 	}
 
 	return 0;
-}*/
+}
