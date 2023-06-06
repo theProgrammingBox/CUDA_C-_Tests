@@ -43,7 +43,7 @@ int main()
 	auto start = std::chrono::high_resolution_clock::now();
 	int sum = 0;
 	for (int i = 0; i < 10000000; ++i)
-		//sum += abs(randf()) > 1;
+		sum += abs(randf()) > 1;
 		//sum += 
 
 	auto finish = std::chrono::high_resolution_clock::now();
