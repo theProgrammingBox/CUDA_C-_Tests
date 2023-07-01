@@ -1,83 +1,59 @@
-﻿#include <iostream>
-#include <fstream>
-#include <unordered_set>
+﻿#define OLC_PGE_APPLICATION
+#include "olcPixelGameEngine.h"
+
+class Example : public olc::PixelGameEngine
+{
+public:
+
+	Example()
+	{
+		sAppName = "Example";
+	}
+
+	bool OnUserCreate() override
+	{
+		return true;
+	}
+
+	bool OnUserUpdate(float fElapsedTime) override
+	{
+		float mousex = GetMouseX() * 2.0f / ScreenWidth();
+		uint32_t bits = *(uint32_t*)&mousex;
+
+		// Clear Screen
+		Clear(olc::BLACK);
+
+		DrawString(0, 0, std::to_string(mousex));
+
+		// Draw 32 bits, white if bit is set, black if not
+		for (int i = 0; i < 32; i++)
+			DrawCircle((ScreenWidth() >> 1) + (i - 16) * 8, (ScreenHeight() >> 1), 4, (bits >> i) & 1 ? olc::WHITE : olc::BLACK);
+
+		return true;
+	}
+};
+
+float randf()
+{
+	return (float)rand() / (float)RAND_MAX;
+}
 
 int main()
 {
+	auto start = std::chrono::high_resolution_clock::now();
+	int sum = 0;
+	for (int i = 0; i < 10000000; ++i)
+		sum += abs(randf()) > 1;
+		//sum += 
 
-	std::ofstream file("data.bin", std::ios::binary);
-	if (!file)
-	{
-		std::cerr << "Couldn't open file for writing.\n";
-		return 1;
-	}
+	auto finish = std::chrono::high_resolution_clock::now();
+	std::chrono::duration<double> elapsed = finish - start;
+	printf("Elapsed time: %f\n", elapsed.count());
 
-	bool b;
-	float* ptr;
+	return 0;
 
-	for (int i = 0; i < 10; i++)
-	{
-		ptr = new float(i);
-
-		b = 1;
-		file.write(reinterpret_cast<const char*>(&b), sizeof(b));
-		file.write(reinterpret_cast<const char*>(&ptr), sizeof(ptr));
-		printf("Inserting address: %p\n", ptr);
-
-		b = 0;
-		file.write(reinterpret_cast<const char*>(&b), sizeof(b));
-		file.write(reinterpret_cast<const char*>(&ptr), sizeof(ptr));
-		delete ptr;
-		printf("Erasing address: %p\n", ptr);
-	}
-	file.close();
-	printf("\n\n\n");
-
-	std::ifstream file2("data.bin", std::ios::binary);
-	if (!file2)
-	{
-		std::cerr << "Couldn't open file for reading.\n";
-		return 1;
-	}
-
-	std::unordered_set<void*> addressSet;
-
-	while (file2.read(reinterpret_cast<char*>(&b), sizeof(b)) &&
-		file2.read(reinterpret_cast<char*>(&ptr), sizeof(ptr)))
-	{
-		if (b)
-		{
-			addressSet.insert(ptr);
-			printf("Inserting address: %p\n", ptr);
-		}
-		else
-		{
-			if (addressSet.find(ptr) == addressSet.end())
-			{
-				printf("Double delete on address: %p\n", ptr);
-			}
-			else
-			{
-				addressSet.erase(ptr);
-				printf("Erasing address: %p\n", ptr);
-			}
-		}
-	}
-	file2.close();
-	printf("\n\n\n");
-
-	if (addressSet.empty())
-	{
-		printf("Perfect\n");
-	}
-	else
-	{
-		printf("Leftover\n");
-		for (auto& ptr : addressSet)
-		{
-			printf("Leftover address: %p\n", ptr);
-		}
-	}
-
+	Example demo;
+	if (demo.Construct(1000, 500, 1, 1))
+		demo.Start();
 	return 0;
 }
