@@ -1,6 +1,9 @@
 ﻿#include <stdio.h>
 #include <stdlib.h>
 #include <vector>
+
+#include <cublas_v2.h>
+#include <curand.h>
 #include <cuda_runtime.h>
 
 struct GpuMemoryManager
@@ -63,6 +66,28 @@ struct GpuMemoryManager
 
 int main()
 {
+	cublasStatus_t cublasStatus;
+	cublasHandle_t cublasHandle;
+	cublasStatus = cublasCreate(&cublasHandle);
+	if (cublasStatus != CUBLAS_STATUS_SUCCESS) {
+		printf("cublasCreate failed with error code %d\n", cublasStatus);
+		return EXIT_FAILURE;
+	}
+
+	/*curandStatus_t curandStatus;
+	curandGenerator_t curandGenerator;
+	curandStatus = curandCreateGenerator(&curandGenerator, CURAND_RNG_PSEUDO_DEFAULT);
+	if (curandStatus != CURAND_STATUS_SUCCESS) {
+		printf("curandCreateGenerator failed with error code %d\n", curandStatus);
+		return EXIT_FAILURE;
+	}
+
+	curandStatus = curandSetPseudoRandomGeneratorSeed(curandGenerator, 1234ULL);
+	if (curandStatus != CURAND_STATUS_SUCCESS) {
+		printf("curandSetPseudoRandomGeneratorSeed failed with error code %d\n", curandStatus);
+		return EXIT_FAILURE;
+	}*/
+
 	GpuMemoryManager manager;
 
 	manager.MapGpuMem();
@@ -72,13 +97,11 @@ int main()
 	cudaMemGetInfo(&freeMem, &totalMem);
 	printf("Free memory: %zu\n", freeMem);
 
-	GpuMemoryManager manager2;
-
-	manager2.MapGpuMem();
-	manager2.PrintGpuMem();
-
 	cudaMemGetInfo(&freeMem, &totalMem);
 	printf("Free memory: %zu\n", freeMem);
+
+	cublasDestroy(cublasHandle);
+	curandDestroyGenerator(curandGenerator);
 
 	return 0;
 }
