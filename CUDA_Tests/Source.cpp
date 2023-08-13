@@ -1,59 +1,68 @@
-﻿#define OLC_PGE_APPLICATION
-#include "olcPixelGameEngine.h"
+﻿#include <iostream>
+#include <vector>
+#include <utility>
+#include <cuda_runtime.h>
 
-class Example : public olc::PixelGameEngine
-{
-public:
-
-	Example()
-	{
-		sAppName = "Example";
-	}
-
-	bool OnUserCreate() override
-	{
-		return true;
-	}
-
-	bool OnUserUpdate(float fElapsedTime) override
-	{
-		float mousex = GetMouseX() * 2.0f / ScreenWidth();
-		uint32_t bits = *(uint32_t*)&mousex;
-
-		// Clear Screen
-		Clear(olc::BLACK);
-
-		DrawString(0, 0, std::to_string(mousex));
-
-		// Draw 32 bits, white if bit is set, black if not
-		for (int i = 0; i < 32; i++)
-			DrawCircle((ScreenWidth() >> 1) + (i - 16) * 8, (ScreenHeight() >> 1), 4, (bits >> i) & 1 ? olc::WHITE : olc::BLACK);
-
-		return true;
-	}
-};
-
-float randf()
-{
-	return (float)rand() / (float)RAND_MAX;
-}
+/*
+Project Description:
+This project is a CUDA GPU Memory Mapping test. The goal is to find all the
+memory fragmentation sizes that can be allocated on the GPU. This is done by
+allocating a large block of memory and then freeing it until the allocation
+fails. The size of the allocation is then recorded and not deallocated. This
+process is repeated until a memory of size 1 can no longer be allocated. The
+size of the allocations are then printed to the console.
+*/
 
 int main()
 {
-	auto start = std::chrono::high_resolution_clock::now();
-	int sum = 0;
-	for (int i = 0; i < 10000000; ++i)
-		sum += abs(randf()) > 1;
-		//sum += 
+	std::vector<std::pair<size_t, float*>*> fragments;
 
-	auto finish = std::chrono::high_resolution_clock::now();
-	std::chrono::duration<double> elapsed = finish - start;
-	printf("Elapsed time: %f\n", elapsed.count());
+	size_t freeMem, totalMem;
+	cudaMemGetInfo(&freeMem, &totalMem);
+	freeMem >>= 2;
+	printf("Free memory: %llu floats\n", freeMem);
 
-	return 0;
+	std::pair<size_t, float*>* frag;
+	size_t low, high, guess;
+	cudaError_t err;
+	do
+	{
+		frag = new std::pair<size_t, float*>(high, nullptr);
+		low = 1, high = freeMem;
+		do
+		{
+			guess = (low + high) >> 1;
+			err = cudaMalloc((void**)&frag->second, guess << 2);
+			err == cudaSuccess ? low = guess + 1 : high = guess - 1;
+			cudaFree(frag->second);
+			printf("Low: %llu, High: %llu, Guess: %llu\n", low, high, guess);
+		} while (low <= high);
+		low--;
 
-	Example demo;
-	if (demo.Construct(1000, 500, 1, 1))
-		demo.Start();
+		if (low > 0)
+		{
+			frag->first = low;
+
+			err = cudaMalloc((void**)&frag->second, low << 2);
+			if (err != cudaSuccess)
+				printf("Failed to allocate memory of size %llu\n", low);
+			else
+				printf("Allocated %llu floats\n", low);
+
+			freeMem -= low;
+			printf("Free memory: %llu floats\n", freeMem);
+
+			fragments.push_back(frag);
+		}
+	} while (low > 0);
+	delete frag;
+
+	/*cudaFree(ptr);
+
+	high++;
+	err = cudaMalloc((void**)&ptr, high * sizeof(float));
+	if (err != cudaSuccess)
+		printf("Failed to allocate memory of size %llu\n", high);*/
+
 	return 0;
 }
