@@ -74,7 +74,7 @@ int main()
 		return EXIT_FAILURE;
 	}
 
-	/*curandStatus_t curandStatus;
+	curandStatus_t curandStatus;
 	curandGenerator_t curandGenerator;
 	curandStatus = curandCreateGenerator(&curandGenerator, CURAND_RNG_PSEUDO_DEFAULT);
 	if (curandStatus != CURAND_STATUS_SUCCESS) {
@@ -86,7 +86,7 @@ int main()
 	if (curandStatus != CURAND_STATUS_SUCCESS) {
 		printf("curandSetPseudoRandomGeneratorSeed failed with error code %d\n", curandStatus);
 		return EXIT_FAILURE;
-	}*/
+	}
 
 	GpuMemoryManager manager;
 
