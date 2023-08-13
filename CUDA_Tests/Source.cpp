@@ -57,12 +57,12 @@ int main()
 	} while (low > 0);
 	delete frag;
 
-	/*cudaFree(ptr);
-
-	high++;
-	err = cudaMalloc((void**)&ptr, high * sizeof(float));
-	if (err != cudaSuccess)
-		printf("Failed to allocate memory of size %llu\n", high);*/
+	for (auto& frag : fragments)
+	{
+		printf("Allocated %llu floats at %p\n", frag->first, frag->second);
+		cudaFree(frag->second);
+		delete frag;
+	}
 
 	return 0;
 }
