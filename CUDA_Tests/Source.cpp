@@ -6,12 +6,14 @@
 #include <curand.h>
 #include <cuda_runtime.h>
 
+#include "Header.cuh"
+
 struct GpuMemoryManager
 {
 	struct MemFrag
 	{
 		size_t size;
-		void* address;
+		float* address;
 	};
 
 	std::vector<MemFrag*> MemFrags;
@@ -64,6 +66,11 @@ struct GpuMemoryManager
 	}
 };
 
+/*
+You don't need cuRand as you can use a faster hash and takes less memory.
+Does doing matmul increase the size of cublasHandle / use more memory?
+*/
+
 int main()
 {
 	cublasStatus_t cublasStatus;
@@ -96,6 +103,32 @@ int main()
 	size_t freeMem, totalMem;
 	cudaMemGetInfo(&freeMem, &totalMem);
 	printf("Free memory: %zu\n", freeMem);
+
+	float* d_A, * d_B, * d_C;
+	const size_t m = 1 << 3;
+	const size_t n = 1 << 3;
+	const size_t k = 1 << 3;
+
+	const size_t ASize = m * n;
+	const size_t BSize = n * k;
+	const size_t CSize = m * k;
+
+	d_A = manager.MemFrags[0]->address;
+	d_B = manager.MemFrags[0]->address + ASize - 1;
+	d_C = manager.MemFrags[0]->address + ASize + BSize;
+
+	CurandGenerateUniformf32(curandGenerator, d_A, ASize);
+	CurandGenerateUniformf32(curandGenerator, d_B, BSize);
+
+	float* h_A = (float*)malloc(ASize * sizeof(float));
+	float* h_B = (float*)malloc(BSize * sizeof(float));
+	float* h_C = (float*)malloc(CSize * sizeof(float));
+
+	cudaMemcpy(h_A, d_A, ASize * sizeof(float), cudaMemcpyDeviceToHost);
+	cudaMemcpy(h_B, d_B, BSize * sizeof(float), cudaMemcpyDeviceToHost);
+
+	PrintTensorf32(n, m, h_A);
+	PrintTensorf32(k, n, h_B);
 
 	cudaMemGetInfo(&freeMem, &totalMem);
 	printf("Free memory: %zu\n", freeMem);
