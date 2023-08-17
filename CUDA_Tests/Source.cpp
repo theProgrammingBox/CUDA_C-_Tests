@@ -170,6 +170,22 @@ int main()
 
 	PrintTensorf32(k, m, h_C);
 
+	printf("Freeing and reallocating memory\n");
+	cudaError_t err;
+	for (GpuMemoryManager::MemFrag* frag : manager.MemFrags)
+	{
+		printf("Freeing %zu bytes at %p\n", frag->size, frag->address);
+		cudaFree(frag->address);
+
+		err = cudaMalloc((void**)&frag->address, frag->size);
+		if (err != cudaSuccess)
+		{
+			printf("cudaMalloc failed with error code %d\n", err);
+			return EXIT_FAILURE;
+		}
+		printf("Allocated %zu bytes at %p\n", frag->size, frag->address);
+	}
+
 	cudaMemGetInfo(&freeMem, &totalMem);
 	printf("Free memory: %zu\n", freeMem);
 
