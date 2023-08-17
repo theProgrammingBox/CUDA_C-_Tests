@@ -133,6 +133,8 @@
     <Text Include="data.txt" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="GpuMemoryManager.h" />
+    <ClInclude Include="Header.h" />
     <ClInclude Include="olcPixelGameEngine.h" />
     <ClInclude Include="Random.h" />
   </ItemGroup>
