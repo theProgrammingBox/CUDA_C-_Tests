@@ -1,125 +1,95 @@
-﻿#include "GpuMemoryManager.cuh"
+﻿#define OLC_PGE_APPLICATION
+#include "olcPixelGameEngine.h"
+
+uint32_t XXH_readLE32(const void* memPtr)
+{
+	const uint8_t* bytePtr = (const uint8_t*)memPtr;
+	return bytePtr[0]
+		| ((uint32_t)bytePtr[1] << 8)
+		| ((uint32_t)bytePtr[2] << 16)
+		| ((uint32_t)bytePtr[3] << 24);
+}
+
+uint64_t XXH_readLE64(const void* memPtr)
+{
+	const uint8_t* bytePtr = (const uint8_t*)memPtr;
+	return bytePtr[0]
+		| ((uint64_t)bytePtr[1] << 8)
+		| ((uint64_t)bytePtr[2] << 16)
+		| ((uint64_t)bytePtr[3] << 24)
+		| ((uint64_t)bytePtr[4] << 32)
+		| ((uint64_t)bytePtr[5] << 40)
+		| ((uint64_t)bytePtr[6] << 48)
+		| ((uint64_t)bytePtr[7] << 56);
+}
+
+static uint64_t XXH3_rrmxmx(uint64_t h64, uint64_t len)
+{
+	/* this mix is inspired by Pelle Evensen's rrmxmx */
+	h64 ^= _rotl64(h64, 49) ^ _rotl64(h64, 24);
+	h64 *= 0x9FB21C651E98DF25ULL;
+	h64 ^= (h64 >> 35) + 8;
+	h64 *= 0x9FB21C651E98DF25ULL;
+	return h64 ^ (h64 >> 28);
+}
+
+olc::Pixel hash(const uint8_t* idx, uint64_t seed, const uint8_t* offset)
+{
+	seed ^= (uint64_t)_byteswap_ulong((uint32_t)seed) << 32;
+	uint32_t const input1 = XXH_readLE32(idx);
+	uint32_t const input2 = XXH_readLE32(idx + 4);
+	uint64_t const bitflip = (0x0E4125884092CA03ULL ^ XXH_readLE64(offset)) - seed;
+	uint64_t const input64 = input2 + (((uint64_t)input1) << 32);
+	uint64_t const keyed = input64 ^ bitflip;
+	uint64_t output = XXH3_rrmxmx(keyed, 8);
+
+	float color = (float)output / (float)UINT64_MAX * 255.0f;
+	return olc::PixelF(color, color, color);
+}
+
+class Example : public olc::PixelGameEngine
+{
+public:
+	uint64_t seed;
+	uint64_t offset;
+
+	void render()
+	{
+		for (int x = 0; x < ScreenWidth(); x++)
+			for (int y = 0; y < ScreenHeight(); y++)
+			{
+				uint32_t idx = y * ScreenWidth() + x;
+				Draw(x, y, hash((uint8_t*)&idx, seed, (uint8_t*)&offset));
+			}
+	}
+
+	bool OnUserCreate() override
+	{
+		seed = 0;
+		offset = 0;
+
+		render();
+
+		return true;
+	}
+
+	bool OnUserUpdate(float fElapsedTime) override
+	{
+		/*if (GetKey(olc::Key::SPACE).bPressed)
+		{*/
+			seed++;
+			offset += 3;
+
+			render();
+		//}
+		return true;
+	}
+};
 
 int main()
 {
-	cublasStatus_t cublasStatus;
-	cublasHandle_t cublasHandle;
-	cublasStatus = cublasCreate(&cublasHandle);
-	if (cublasStatus != CUBLAS_STATUS_SUCCESS) {
-		printf("cublasCreate failed with error code %d\n", cublasStatus);
-		return EXIT_FAILURE;
-	}
-
-	curandStatus_t curandStatus;
-	curandGenerator_t curandGenerator;
-	curandStatus = curandCreateGenerator(&curandGenerator, CURAND_RNG_PSEUDO_DEFAULT);
-	if (curandStatus != CURAND_STATUS_SUCCESS) {
-		printf("curandCreateGenerator failed with error code %d\n", curandStatus);
-		return EXIT_FAILURE;
-	}
-
-	curandStatus = curandSetPseudoRandomGeneratorSeed(curandGenerator, 1234ULL);
-	if (curandStatus != CURAND_STATUS_SUCCESS) {
-		printf("curandSetPseudoRandomGeneratorSeed failed with error code %d\n", curandStatus);
-		return EXIT_FAILURE;
-	}
-
-	GpuMemoryManager manager;
-
-	manager.MapGpuMem();
-	manager.PrintGpuMem();
-
-	size_t freeMem, totalMem;
-	cudaMemGetInfo(&freeMem, &totalMem);
-	printf("Free memory: %zu\n", freeMem);
-
-	float* d_A, * d_B, * d_C;
-	const size_t m = 1 << 3;
-	const size_t n = 1 << 3;
-	const size_t k = 1 << 3;
-
-	const size_t ASize = m * n;
-	const size_t BSize = n * k;
-	const size_t CSize = m * k;
-
-	d_A = manager.MemFrags[0]->address;
-	d_B = manager.MemFrags[0]->address + ASize;
-	d_C = manager.MemFrags[0]->address + ASize + BSize;
-
-	CurandGenerateUniformf32(curandGenerator, d_A, ASize);
-	CurandGenerateUniformf32(curandGenerator, d_B, BSize);
-
-	float* h_A = (float*)malloc(ASize * sizeof(float));
-	float* h_B = (float*)malloc(BSize * sizeof(float));
-	float* h_C = (float*)malloc(CSize * sizeof(float));
-
-	cudaMemcpy(h_A, d_A, ASize * sizeof(float), cudaMemcpyDeviceToHost);
-	cudaMemcpy(h_B, d_B, BSize * sizeof(float), cudaMemcpyDeviceToHost);
-
-	PrintTensorf32(n, m, h_A);
-	PrintTensorf32(k, n, h_B);
-
-	const float alpha = 1.0f;
-	const float beta = 0.0f;
-
-	cublasStatus = cublasSgemm(
-		cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
-		k, m, n,
-		&alpha,
-		d_B, k,
-		d_A, n,
-		&beta,
-		d_C, k);
-
-	if (cublasStatus != CUBLAS_STATUS_SUCCESS) {
-		printf("cublasSgemm failed with error code %d\n", cublasStatus);
-		return EXIT_FAILURE;
-	}
-
-	cudaMemcpy(h_C, d_C, CSize * sizeof(float), cudaMemcpyDeviceToHost);
-
-	PrintTensorf32(k, m, h_C);
-
-	cublasStatus = cublasSgemmStridedBatched(
-		cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
-		k, m, n,
-		&alpha,
-		d_B, k, BSize,
-		d_A, n, ASize,
-		&beta,
-		d_C, k, CSize,
-		1);
-
-	if (cublasStatus != CUBLAS_STATUS_SUCCESS) {
-		printf("cublasSgemmStridedBatched failed with error code %d\n", cublasStatus);
-		return EXIT_FAILURE;
-	}
-
-	cudaMemcpy(h_C, d_C, CSize * sizeof(float), cudaMemcpyDeviceToHost);
-
-	PrintTensorf32(k, m, h_C);
-
-	printf("Freeing and reallocating memory\n");
-	cudaError_t err;
-	for (GpuMemoryManager::MemFrag* frag : manager.MemFrags)
-	{
-		printf("Freeing %zu bytes at %p\n", frag->size, frag->address);
-		cudaFree(frag->address);
-
-		err = cudaMalloc((void**)&frag->address, frag->size);
-		if (err != cudaSuccess)
-		{
-			printf("cudaMalloc failed with error code %d\n", err);
-			return EXIT_FAILURE;
-		}
-		printf("Allocated %zu bytes at %p\n", frag->size, frag->address);
-	}
-
-	cudaMemGetInfo(&freeMem, &totalMem);
-	printf("Free memory: %zu\n", freeMem);
-
-	cublasDestroy(cublasHandle);
-	curandDestroyGenerator(curandGenerator);
-
+	Example demo;
+	if (demo.Construct(1920, 1080, 1, 1))
+		demo.Start();
 	return 0;
 }
