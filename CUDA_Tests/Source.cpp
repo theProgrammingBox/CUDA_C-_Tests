@@ -25,7 +25,6 @@ uint64_t XXH_readLE64(const void* memPtr)
 
 static uint64_t XXH3_rrmxmx(uint64_t h64, uint64_t len)
 {
-	/* this mix is inspired by Pelle Evensen's rrmxmx */
 	h64 ^= _rotl64(h64, 49) ^ _rotl64(h64, 24);
 	h64 *= 0x9FB21C651E98DF25ULL;
 	h64 ^= (h64 >> 35) + 8;
