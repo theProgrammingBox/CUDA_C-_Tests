@@ -10,8 +10,12 @@ olc::Pixel hash(uint32_t idx, uint32_t seed, uint32_t offset)
 	seed *= 0x24F66AC9;
 	seed ^= seed >> 17;
 
-	float const color = seed * 0.00000000023283064365386962890625f;
-	return olc::PixelF(color, color, color);
+	const float color1 = (seed & 0xFF) * 0.00390625f;
+	const float color2 = (seed & 0xFF00) * 0.00001525878f;
+	const float color3 = (seed & 0xFF0000) * 0.0000000596046448f;
+	const float color4 = (seed & 0xFF000000) * 0.00000000023283064365f;
+
+	return olc::PixelF(color1, color2, color3, color4);
 }
 
 class Example : public olc::PixelGameEngine
@@ -22,12 +26,9 @@ public:
 
 	void render()
 	{
-		for (int x = 0; x < ScreenWidth(); x++)
-			for (int y = 0; y < ScreenHeight(); y++)
-			{
-				uint32_t idx = y * ScreenWidth() + x;
-				Draw(x, y, hash(idx, seed, offset));
-			}
+		for (uint32_t x = 0; x < ScreenWidth(); x++)
+			for (uint32_t y = 0; y < ScreenHeight(); y++)
+				Draw(x, y, hash(y * ScreenWidth() + x, seed, offset));
 	}
 
 	bool OnUserCreate() override
@@ -35,20 +36,15 @@ public:
 		seed = 0;
 		offset = 0;
 
-		render();
-
 		return true;
 	}
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-		if (GetKey(olc::Key::SPACE).bPressed)
-		{
-			seed++;
-			offset += 3;
+		seed++;
+		offset += 3;
+		render();
 
-			render();
-		}
 		return true;
 	}
 };
