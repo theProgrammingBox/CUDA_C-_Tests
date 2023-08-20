@@ -42,7 +42,7 @@ olc::Pixel hash(const uint8_t* idx, uint64_t seed, const uint8_t* offset)
 	uint64_t const keyed = input64 ^ bitflip;
 	uint64_t output = XXH3_rrmxmx(keyed, 8);
 
-	float color = (float)output / (float)UINT64_MAX * 255.0f;
+	float color = (float)keyed / (float)UINT64_MAX * 255.0f;
 	return olc::PixelF(color, color, color);
 }
 
