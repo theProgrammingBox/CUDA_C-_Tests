@@ -1,85 +1,138 @@
-﻿#define OLC_PGE_APPLICATION
-#include "olcPixelGameEngine.h"
+﻿#include <stdio.h>	// printf
+#include <assert.h>	// assert
+#include <vector>	// std::vector
 
-typedef uint32_t u32;
-typedef int8_t i8;
-typedef float f32;
-
-void Lehmer32(u32& x)
+struct GpuMemoryManager
 {
-	x *= 0xBAC57D37;
-	x ^= x >> 16;
-	x *= 0x24F66AC9;
-	x ^= x >> 16;
-}
-
-void FourF32Rands(u32 idx, u32 seed1, u32 seed2, f32* fourF32s)
-{
-	idx ^= seed1;
-	Lehmer32(idx);
-	idx ^= seed2;
-
-	fourF32s[0] = i8(idx & 0xFF) * 0.0078125f;
-	fourF32s[1] = i8(idx >> 8 & 0xFF) * 0.0078125f;
-	fourF32s[2] = i8(idx >> 16 & 0xFF) * 0.0078125f;
-	fourF32s[3] = i8(idx >> 24) * 0.0078125f;
-}
-
-class Example : public olc::PixelGameEngine
-{
-public:
-	u32 seed1;
-	u32 seed2;
-	f32 fourF32s[4];
-
-	void seed()
+	struct MemFrag
 	{
-		seed1 = time(NULL) ^ 0xE621B963;
-		Lehmer32(seed1);
-		seed2 = seed1 ^ 0x6053653F;
-		Lehmer32(seed2);
-	}
+		float* address;
+		size_t size;
+		float ratio;
+		size_t usedSize;
+	};
 
-	void render()
+	struct TensorData
 	{
-		for (u32 x = 0; x < ScreenWidth(); x++)
+		float** address;
+		size_t size;
+		float ratio;
+		size_t idx;
+	};
+
+	std::vector<MemFrag> MemFrags;
+	std::vector<TensorData> dynamicTensor;
+	std::vector<TensorData> staticTensor;
+
+	GpuMemoryManager()
+	{
+		printf("Initializing GPU memory manager...\n");
+
+		for (int i = 0; i < 2; ++i)
 		{
-			for (u32 y = 0; y < ScreenHeight(); y++)
-			{
-				FourF32Rands(y * ScreenWidth() + x, seed1, seed2, fourF32s);
-				Draw(x, y, olc::PixelF(fourF32s[0], fourF32s[1], fourF32s[2], fourF32s[3]));
-			}
+			MemFrag frag;
+			frag.address = nullptr;
+			frag.size = i * 1024 + 1024;
+			frag.usedSize = 0;
+			MemFrags.push_back(frag);
 		}
 	}
 
-	void refresh()
+	void ManageDynamic(float** tensorPtr, size_t size)
 	{
-		Lehmer32(seed1);
-		Lehmer32(seed2);
-		render();
+		TensorData tensorData;
+		tensorData.address = tensorPtr;
+		tensorData.size = size;
+		tensorData.idx = 0;
+		dynamicTensor.emplace_back(tensorData);
 	}
 
-	bool OnUserCreate() override
+	void ManageStatic(float** tensorPtr, size_t size)
 	{
-		seed();
-		refresh();
-
-		return true;
+		TensorData tensorData;
+		tensorData.address = tensorPtr;
+		tensorData.size = size;
+		tensorData.idx = 0;
+		staticTensor.emplace_back(tensorData);
 	}
 
-	bool OnUserUpdate(float fElapsedTime) override
+	void Print()
 	{
-		if (GetKey(olc::Key::SPACE).bPressed)
-			refresh();
+		for (auto& frag : MemFrags)
+			printf("Frag size: %d, address: %p, ratio: %f\n", frag.size, frag.address, frag.ratio);
+		printf("\n");
 
-		return true;
+		for (auto& tensor : dynamicTensor)
+			printf("Dynamic tensor size: %d, address: %p, ratio: %f\n", tensor.size, tensor.address, tensor.ratio);
+		printf("\n");
+
+		for (auto& tensor : staticTensor)
+			printf("Static tensor size: %d, address: %p, ratio: %f\n", tensor.size, tensor.address, tensor.ratio);
+		printf("\n");
+	}
+
+	void Allocate()
+	{
+		/*qsort(MemFrags.data(), MemFrags.size(), sizeof(MemFrag), [](const void* a, const void* b) -> int
+			{
+			return ((MemFrag*)b)->size - ((MemFrag*)a)->size;
+		});
+
+		qsort(dynamicTensor.data(), dynamicTensor.size(), sizeof(TensorData), [](const void* a, const void* b) -> int
+			{
+			return ((TensorData*)b)->size - ((TensorData*)a)->size;
+		});
+
+		qsort(staticTensor.data(), staticTensor.size(), sizeof(TensorData), [](const void* a, const void* b) -> int
+			{
+			return ((TensorData*)b)->size - ((TensorData*)a)->size;
+		});*/
+
+		for (auto& tensor : staticTensor)
+		{
+			MemFrags[0].usedSize += tensor.size;
+		}
+
+		for (auto& frag : MemFrags)
+			printf("Frag used size: %d\n", frag.usedSize);
+
+		/*size_t fragSize = 0;
+		for (auto& frag : MemFrags)
+			fragSize += frag.size;
+
+		size_t staticSize = 0;
+		for (auto& tensor : staticTensor)
+			staticSize += tensor.size;
+
+		size_t dynamicTensorSize = 0;
+		for (auto& tensor : dynamicTensor)
+			dynamicTensorSize += tensor.size;
+		for (auto& tensor : dynamicTensor)
+			tensor.ratio = (float)tensor.size / dynamicTensorSize;
+
+		for (auto& frag : MemFrags)
+			frag.ratio = (float)frag.size / fragSize;
+		for (auto& tensor : staticTensor)
+			tensor.ratio = (float)tensor.size / fragSize;*/
 	}
 };
 
 int main()
 {
-	Example demo;
-	if (demo.Construct(1440, 810, 1, 1))
-		demo.Start();
+	GpuMemoryManager gpuMemoryManager;
+
+	float* staticArr1 = nullptr;
+	float* staticArr2 = nullptr;
+	float* dynamicArr1 = nullptr;
+	float* dynamicArr2 = nullptr;
+
+	gpuMemoryManager.ManageStatic(&staticArr1, 1024);
+	gpuMemoryManager.ManageStatic(&staticArr2, 2000);
+	gpuMemoryManager.ManageDynamic(&dynamicArr1, 3);
+	gpuMemoryManager.ManageDynamic(&dynamicArr2, 4);
+
+	gpuMemoryManager.Allocate();
+	gpuMemoryManager.Print();
+
 	return 0;
 }
