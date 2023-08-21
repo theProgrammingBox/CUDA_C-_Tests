@@ -1,14 +1,16 @@
 ﻿#define OLC_PGE_APPLICATION
 #include "olcPixelGameEngine.h"
 
-void xorshift(unsigned int& x)
+typedef unsigned int u32;
+
+void xorshift(u32& x)
 {
 	x ^= x << 13;
 	x ^= x >> 17;
 	x ^= x << 5;
 }
 
-olc::Pixel hash(uint32_t idx, uint32_t seed, uint32_t offset)
+olc::Pixel hash(u32 idx, u32 seed, u32 offset)
 {
 	seed ^= idx;
 	seed ^= seed << 13;
@@ -28,13 +30,13 @@ olc::Pixel hash(uint32_t idx, uint32_t seed, uint32_t offset)
 class Example : public olc::PixelGameEngine
 {
 public:
-	uint32_t seed;
-	uint32_t offset;
+	u32 seed;
+	u32 offset;
 
 	void render()
 	{
-		for (uint32_t x = 0; x < ScreenWidth(); x++)
-			for (uint32_t y = 0; y < ScreenHeight(); y++)
+		for (u32 x = 0; x < ScreenWidth(); x++)
+			for (u32 y = 0; y < ScreenHeight(); y++)
 				Draw(x, y, hash(y * ScreenWidth() + x, seed, offset));
 	}
 
@@ -45,7 +47,6 @@ public:
 		xorshift(seed);
 
 		offset = seed;
-		xorshift(offset);
 		xorshift(offset);
 
 		printf("Seed: %u\n", seed);
