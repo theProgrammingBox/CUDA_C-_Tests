@@ -1,58 +1,68 @@
 ﻿#define OLC_PGE_APPLICATION
 #include "olcPixelGameEngine.h"
 
-typedef unsigned int u32;
+typedef uint32_t u32;
+typedef int8_t i8;
+typedef float f32;
 
-void xorshift(u32& x)
+void Lehmer32(u32& x)
 {
-	x ^= x << 13;
-	x ^= x >> 17;
-	x ^= x << 5;
+	x *= 0xBAC57D37;
+	x ^= x >> 16;
+	x *= 0x24F66AC9;
+	x ^= x >> 16;
 }
 
-olc::Pixel hash(u32 idx, u32 seed, u32 offset)
+void FourF32Rands(u32 idx, u32 seed1, u32 seed2, f32* fourF32s)
 {
-	seed ^= idx;
-	seed ^= seed << 13;
-	seed ^= offset;
-	seed *= 0xBAC57D37;
-	seed ^= seed >> 17;
-	seed *= 0x24F66AC9;
+	idx ^= seed1;
+	Lehmer32(idx);
+	idx ^= seed2;
 
-	const float color1 = (seed & 0xFF) * 0.00390625f;
-	const float color2 = (seed & 0xFF00) * 0.00001525878f;
-	const float color3 = (seed & 0xFF0000) * 0.0000000596046448f;
-	const float color4 = (seed & 0xFF000000) * 0.00000000023283064365f;
-
-	return olc::PixelF(color1, color2, color3, color4);
+	fourF32s[0] = i8(idx & 0xFF) * 0.0078125f;
+	fourF32s[1] = i8(idx >> 8 & 0xFF) * 0.0078125f;
+	fourF32s[2] = i8(idx >> 16 & 0xFF) * 0.0078125f;
+	fourF32s[3] = i8(idx >> 24) * 0.0078125f;
 }
 
 class Example : public olc::PixelGameEngine
 {
 public:
-	u32 seed;
-	u32 offset;
+	u32 seed1;
+	u32 seed2;
+	f32 fourF32s[4];
+
+	void seed()
+	{
+		seed1 = time(NULL) ^ 0xE621B963;
+		Lehmer32(seed1);
+		seed2 = seed1 ^ 0x6053653F;
+		Lehmer32(seed2);
+	}
 
 	void render()
 	{
 		for (u32 x = 0; x < ScreenWidth(); x++)
+		{
 			for (u32 y = 0; y < ScreenHeight(); y++)
-				Draw(x, y, hash(y * ScreenWidth() + x, seed, offset));
+			{
+				FourF32Rands(y * ScreenWidth() + x, seed1, seed2, fourF32s);
+				Draw(x, y, olc::PixelF(fourF32s[0], fourF32s[1], fourF32s[2], fourF32s[3]));
+			}
+		}
+	}
+
+	void refresh()
+	{
+		Lehmer32(seed1);
+		Lehmer32(seed2);
+		render();
 	}
 
 	bool OnUserCreate() override
 	{
-		seed = time(NULL);
-		xorshift(seed);
-		xorshift(seed);
-
-		offset = seed;
-		xorshift(offset);
-
-		printf("Seed: %u\n", seed);
-		printf("Offset: %u\n", offset);
-
-		render();
+		seed();
+		refresh();
 
 		return true;
 	}
@@ -60,11 +70,7 @@ public:
 	bool OnUserUpdate(float fElapsedTime) override
 	{
 		if (GetKey(olc::Key::SPACE).bPressed)
-		{
-			seed++;
-			offset += 3;
-			render();
-		}
+			refresh();
 
 		return true;
 	}
