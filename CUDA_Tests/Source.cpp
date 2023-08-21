@@ -34,8 +34,10 @@ struct GpuMemoryManager
 			frag.address = nullptr;
 			frag.size = i * 1024 + 1024;
 			frag.usedSize = 0;
-			MemFrags.push_back(frag);
+			MemFrags.emplace_back(frag);
 		}
+
+		assert(MemFrags.size() > 0);
 	}
 
 	void ManageDynamic(float** tensorPtr, size_t size)
