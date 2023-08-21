@@ -1,14 +1,21 @@
 ﻿#define OLC_PGE_APPLICATION
 #include "olcPixelGameEngine.h"
 
+void xorshift(unsigned int& x)
+{
+	x ^= x << 13;
+	x ^= x >> 17;
+	x ^= x << 5;
+}
+
 olc::Pixel hash(uint32_t idx, uint32_t seed, uint32_t offset)
 {
 	seed ^= idx;
-	seed *= 0xBAC57D37;
-	seed ^= seed >> 15;
+	seed ^= seed << 13;
 	seed ^= offset;
-	seed *= 0x24F66AC9;
+	seed *= 0xBAC57D37;
 	seed ^= seed >> 17;
+	seed *= 0x24F66AC9;
 
 	const float color1 = (seed & 0xFF) * 0.00390625f;
 	const float color2 = (seed & 0xFF00) * 0.00001525878f;
@@ -33,17 +40,30 @@ public:
 
 	bool OnUserCreate() override
 	{
-		seed = 0;
-		offset = 0;
+		seed = time(NULL);
+		xorshift(seed);
+		xorshift(seed);
+
+		offset = seed;
+		xorshift(offset);
+		xorshift(offset);
+
+		printf("Seed: %u\n", seed);
+		printf("Offset: %u\n", offset);
+
+		render();
 
 		return true;
 	}
 
 	bool OnUserUpdate(float fElapsedTime) override
 	{
-		seed++;
-		offset += 3;
-		render();
+		if (GetKey(olc::Key::SPACE).bPressed)
+		{
+			seed++;
+			offset += 3;
+			render();
+		}
 
 		return true;
 	}
