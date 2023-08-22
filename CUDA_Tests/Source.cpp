@@ -103,8 +103,6 @@ struct GpuMemoryManager
 		std::vector<MemFrag*> bestCombination(staticTensors.size() + dynamicTensors.size());
 		allocateStatic(0, bestScore, bestCombination);
 
-		size_t largestN = 0;
-		f64 smallestRatio = 0;
 		for (u32 i = 0; i < staticTensors.size(); ++i)
 		{
 			bestCombination[i]->ratio -= staticTensors[i]->ratio;
@@ -125,17 +123,19 @@ struct GpuMemoryManager
 			printf("ratio: %f, dynamic size: %d\n", frag->ratio, frag->dynamicSize);
 		printf("\n");
 
+		size_t largestN = 0;
+		f64 smallestRatio = 1;
 		for (auto& frag : MemFrags)
 		{
-			if (frag->ratio < smallestRatio)
+			if (frag->ratio <= smallestRatio)
 			{
 				smallestRatio = frag->ratio;
-				largestN = (frag->size - frag->staticSize) / frag->dynamicSize;
-				printf("largestN: %d\n", largestN);
+				if (frag->dynamicSize > 0)
+					largestN = (frag->size - frag->staticSize) / frag->dynamicSize;
 			}
 		}
+		printf("largestN: %d\n", largestN);
 
-		// dynamic size is largestN * dynamicSize, now double check that static plus dynamic is <= frag size
 		for (auto& frag : MemFrags)
 			printf("size: %zu, static size: %zu, dynamic size: %zu, leftover: %zu\n", frag->size, frag->staticSize, frag->dynamicSize, frag->size - frag->staticSize - frag->dynamicSize * largestN);
 		printf("\n");
@@ -202,8 +202,8 @@ int main()
 	f32* dynamicArr1 = nullptr;
 	f32* dynamicArr2 = nullptr;
 
-	gpuMemoryManager.ManageStatic(&staticArr1, 32);
-	gpuMemoryManager.ManageStatic(&staticArr2, 64);
+	gpuMemoryManager.ManageStatic(&staticArr1, 1024);
+	gpuMemoryManager.ManageStatic(&staticArr2, 2000);
 	gpuMemoryManager.ManageDynamic(&dynamicArr1, 3);
 	gpuMemoryManager.ManageDynamic(&dynamicArr2, 4);
 
