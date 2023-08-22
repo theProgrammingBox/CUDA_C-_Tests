@@ -5,9 +5,14 @@ typedef uint32_t u32;
 typedef float f32;
 typedef double f64;
 
+/*
+use float for ratios
+seperate working vectors from struct
+*/
+
 struct GpuMemoryManager
 {
-	struct MemFrag
+	struct MemoryData
 	{
 		f32* address;
 		size_t size;
@@ -21,10 +26,10 @@ struct GpuMemoryManager
 		f32** address;
 		size_t size;
 		f64 ratio;
-		MemFrag* frag;
+		MemoryData* frag;
 	};
 
-	std::vector<MemFrag*> MemFrags;
+	std::vector<MemoryData*> MemFrags;
 	std::vector<TensorData*> dynamicTensors;
 	std::vector<TensorData*> staticTensors;
 
@@ -34,9 +39,9 @@ struct GpuMemoryManager
 
 		for (u32 i = 0; i < 2; ++i)
 		{
-			MemFrag* frag = new MemFrag;
+			MemoryData* frag = new MemoryData;
 			frag->address = nullptr;
-			frag->size = i * 1024 + 1024;
+			frag->size = i * 102400 + 10240;
 			frag->dynamicSize = 0;
 			MemFrags.emplace_back(frag);
 		}
@@ -108,7 +113,7 @@ struct GpuMemoryManager
 		//Print();
 
 		f64 bestScore = DBL_MAX;
-		std::vector<MemFrag*> bestCombination(staticTensors.size() + dynamicTensors.size());
+		std::vector<MemoryData*> bestCombination(staticTensors.size() + dynamicTensors.size());
 		allocateStatic(0, bestScore, bestCombination);
 
 		for (u32 i = 0; i < staticTensors.size(); ++i)
@@ -141,11 +146,11 @@ struct GpuMemoryManager
 		printf("\n");
 	}
 
-	void allocateStatic(u32 tensorIdx, f64& bestScore, std::vector<MemFrag*>& bestCombination)
+	void allocateStatic(u32 tensorIdx, f64& bestScore, std::vector<MemoryData*>& bestCombination)
 	{
 		if (tensorIdx == staticTensors.size())
 		{
-			for (MemFrag* frag : MemFrags)
+			for (MemoryData* frag : MemFrags)
 				if (frag->ratio < 0)
 					return;
 
@@ -153,7 +158,7 @@ struct GpuMemoryManager
 			return;
 		}
 
-		for (MemFrag* frag : MemFrags)
+		for (MemoryData* frag : MemFrags)
 		{
 			staticTensors[tensorIdx]->frag = frag;
 			f64 score = frag->ratio;
@@ -163,12 +168,12 @@ struct GpuMemoryManager
 		}
 	}
 
-	void allocateDynamic(u32 tensorIdx, f64& bestScore, std::vector<MemFrag*>& bestCombination)
+	void allocateDynamic(u32 tensorIdx, f64& bestScore, std::vector<MemoryData*>& bestCombination)
 	{
 		if (tensorIdx == dynamicTensors.size())
 		{
 			f64 score = 0;
-			for (MemFrag* frag : MemFrags)
+			for (MemoryData* frag : MemFrags)
 				score += abs(frag->ratio);
 			
 			if (score < bestScore)
@@ -182,7 +187,7 @@ struct GpuMemoryManager
 			return;
 		}
 
-		for (MemFrag* frag : MemFrags)
+		for (MemoryData* frag : MemFrags)
 		{
 			dynamicTensors[tensorIdx]->frag = frag;
 			f64 score = frag->ratio;
