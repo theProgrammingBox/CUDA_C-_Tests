@@ -1,5 +1,4 @@
 ﻿#include <stdio.h>	// printf
-#include <assert.h>	// assert
 #include <vector>	// std::vector
 
 typedef uint32_t u32;
@@ -42,7 +41,11 @@ struct GpuMemoryManager
 			MemFrags.emplace_back(frag);
 		}
 
-		assert(MemFrags.size() > 0);
+		if (MemFrags.size() <= 0)
+		{
+			fprintf(stderr, "Memory size is <= 0\n");
+			exit(EXIT_FAILURE);
+		}
 	}
 
 	void ManageDynamic(f32** tensorPtr, size_t size)
@@ -84,11 +87,16 @@ struct GpuMemoryManager
 		for (auto& frag : MemFrags)
 			fragSize += frag->size;
 		for (auto& tensor : staticTensors)
+		{
+			if (tensor->size > fragSize)
+			{
+				fprintf(stderr, "Static tensor size is larger than total memory size\n");
+				exit(EXIT_FAILURE);
+			}
 			fragSize -= tensor->size;
+		}
 		for (auto& tensor : dynamicTensors)
 			dynamicTensorSize += tensor->size;
-
-		assert(fragSize > 0);
 
 		for (auto& frag : MemFrags)
 			frag->ratio = (f64)frag->size / fragSize;
@@ -203,12 +211,11 @@ int main()
 	f32* dynamicArr2 = nullptr;
 
 	gpuMemoryManager.ManageStatic(&staticArr1, 1024);
-	gpuMemoryManager.ManageStatic(&staticArr2, 2000);
+	gpuMemoryManager.ManageStatic(&staticArr2, 3000);
 	gpuMemoryManager.ManageDynamic(&dynamicArr1, 3);
 	gpuMemoryManager.ManageDynamic(&dynamicArr2, 4);
 
 	gpuMemoryManager.Allocate();
-	gpuMemoryManager.Print();
 
 	return 0;
 }
