@@ -105,7 +105,7 @@ struct GpuMemoryManager
 		for (auto& tensor : dynamicTensors)
 			tensor->ratio = (f64)tensor->size / dynamicTensorSize;
 
-		Print();
+		//Print();
 
 		f64 bestScore = DBL_MAX;
 		std::vector<MemFrag*> bestCombination(staticTensors.size() + dynamicTensors.size());
@@ -117,19 +117,11 @@ struct GpuMemoryManager
 			bestCombination[i]->staticSize += staticTensors[i]->size;
 		}
 
-		for (auto& frag : MemFrags)
-			printf("ratio: %f, static Size: %d\n", frag->ratio, frag->staticSize);
-		printf("\n");
-
 		for (u32 i = 0; i < dynamicTensors.size(); ++i)
 		{
 			bestCombination[i + staticTensors.size()]->ratio -= dynamicTensors[i]->ratio;
 			bestCombination[i + staticTensors.size()]->dynamicSize += dynamicTensors[i]->size;
 		}
-
-		for (auto& frag : MemFrags)
-			printf("ratio: %f, dynamic size: %d\n", frag->ratio, frag->dynamicSize);
-		printf("\n");
 
 		size_t largestN = 0;
 		f64 smallestRatio = 1;
@@ -210,8 +202,8 @@ int main()
 	f32* dynamicArr1 = nullptr;
 	f32* dynamicArr2 = nullptr;
 
-	gpuMemoryManager.ManageStatic(&staticArr1, 1024);
-	gpuMemoryManager.ManageStatic(&staticArr2, 3000);
+	gpuMemoryManager.ManageStatic(&staticArr1, 1000);
+	gpuMemoryManager.ManageStatic(&staticArr2, 2000);
 	gpuMemoryManager.ManageDynamic(&dynamicArr1, 3);
 	gpuMemoryManager.ManageDynamic(&dynamicArr2, 4);
 
