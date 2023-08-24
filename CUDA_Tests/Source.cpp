@@ -72,10 +72,10 @@ struct GpuMemoryManager
 		FailIf(tensorData->size <= 0, "Dynamic Tensor size is <= 0\n");
 	}
 
-	void allocateStatic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
+	void allocateStatic(uint32_t tensorIdx, float& largestRatio, std::vector<MemoryData*>& bestCombination, size_t& largestN)
 	{
 		if (tensorIdx == staticTensors.size())
-			allocateDynamic(0, bestScore, bestCombination, largestN);
+			allocateDynamic(0, largestRatio, bestCombination, largestN);
 		else
 			for (MemoryData* memoryPtr : availableMemory)
 				if (memoryPtr->size >= staticTensors[tensorIdx]->size)
@@ -83,36 +83,33 @@ struct GpuMemoryManager
 					staticTensors[tensorIdx]->memoryPtr = memoryPtr;
 					memoryPtr->ratio -= staticTensors[tensorIdx]->ratio;
 					memoryPtr->size -= staticTensors[tensorIdx]->size;
-					allocateStatic(tensorIdx + 1, bestScore, bestCombination, largestN);
+					allocateStatic(tensorIdx + 1, largestRatio, bestCombination, largestN);
 					memoryPtr->ratio += staticTensors[tensorIdx]->ratio;
 					memoryPtr->size += staticTensors[tensorIdx]->size;
 				}
 	}
 
-	void allocateDynamic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
+	void allocateDynamic(uint32_t tensorIdx, float& largestRatio, std::vector<MemoryData*>& bestCombination, size_t& largestN)
 	{
 		if (tensorIdx == dynamicTensors.size())
 		{
-			float score = 0;
-			for (MemoryData* memoryPtr : availableMemory)
-				score += abs(memoryPtr->ratio);
+			float smallestRatio = 1;
+			size_t size = 0;
+			size_t dynamicSize = 0;
+			for (auto& memoryPtr : availableMemory)
+				if (memoryPtr->dynamicSize > 0 && memoryPtr->ratio < smallestRatio)
+				{
+					smallestRatio = memoryPtr->ratio;
+					size = memoryPtr->size;
+					dynamicSize = memoryPtr->dynamicSize;
+				}
 
-			if (score < bestScore)
+			if (smallestRatio > largestRatio)
 			{
-				float smallestRatio = 1;
-				size_t size = 0;
-				size_t dynamicSize = 0;
-				for (auto& memoryPtr : availableMemory)
-					if (memoryPtr->dynamicSize > 0 && memoryPtr->ratio < smallestRatio)
-					{
-						smallestRatio = memoryPtr->ratio;
-						size = memoryPtr->size;
-						dynamicSize = memoryPtr->dynamicSize;
-					}
 				if (dynamicSize > 0)
 					largestN = size / dynamicSize;
+				largestRatio = smallestRatio;
 
-				bestScore = score;
 				for (int i = 0; i < staticTensors.size(); ++i)
 					bestCombination[i] = staticTensors[i]->memoryPtr;
 				for (int i = 0; i < dynamicTensors.size(); ++i)
@@ -125,7 +122,7 @@ struct GpuMemoryManager
 				dynamicTensors[tensorIdx]->memoryPtr = memoryPtr;
 				memoryPtr->ratio -= dynamicTensors[tensorIdx]->ratio;
 				memoryPtr->dynamicSize += dynamicTensors[tensorIdx]->size;
-				allocateDynamic(tensorIdx + 1, bestScore, bestCombination, largestN);
+				allocateDynamic(tensorIdx + 1, largestRatio, bestCombination, largestN);
 				memoryPtr->ratio += dynamicTensors[tensorIdx]->ratio;
 				memoryPtr->dynamicSize -= dynamicTensors[tensorIdx]->size;
 			}
@@ -154,9 +151,9 @@ struct GpuMemoryManager
 			tensor->ratio = (float)tensor->size / dynamicTensorSize;
 
 		largestN = 0;
-		float bestScore = FLT_MAX;
+		float largestRatio = -1;
 		std::vector<MemoryData*> bestCombination(staticTensors.size() + dynamicTensors.size());
-		allocateStatic(0, bestScore, bestCombination, largestN);
+		allocateStatic(0, largestRatio, bestCombination, largestN);
 
 		// allocate memory
 		for (auto& memoryPtr : availableMemory)
@@ -192,7 +189,7 @@ struct GpuMemoryManager
 		{
 			for (int i = 0; i < memoryPtr->size; ++i)
 				printf("%1.0f ", memoryPtr->address[i]);
-			printf("\n");
+			printf("\n\n");
 		}
 	}
 };
@@ -210,8 +207,8 @@ int main()
 
 	gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
 	gpuMemoryManager.ManageStatic(&staticArr2, sSize2);
-	gpuMemoryManager.ManageDynamic(&dynamicArr1, dCoef1);
-	gpuMemoryManager.ManageDynamic(&dynamicArr2, dCoef2);
+	/*gpuMemoryManager.ManageDynamic(&dynamicArr1, dCoef1);
+	gpuMemoryManager.ManageDynamic(&dynamicArr2, dCoef2);*/
 
 	gpuMemoryManager.Allocate(batches);
 	printf("batches: %zu\n\n", batches);
@@ -220,10 +217,10 @@ int main()
 		staticArr1[i] = i;
 	for (int i = 0; i < sSize2; ++i)
 		staticArr2[i] = i;
-	for (int i = 0; i < dCoef1 * batches; ++i)
+	/*for (int i = 0; i < dCoef1 * batches; ++i)
 		dynamicArr1[i] = i;
 	for (int i = 0; i < dCoef2 * batches; ++i)
-		dynamicArr2[i] = i;
+		dynamicArr2[i] = i;*/
 
 	gpuMemoryManager.PrintMemory();
 
