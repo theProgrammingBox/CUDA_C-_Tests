@@ -5,13 +5,21 @@
 seperate working vectors from struct
 */
 
+void FailIf(bool condition, const char* message)
+{
+	if (condition)
+	{
+		fprintf(stderr, "%s\n", message);
+		abort();
+	}
+}
+
 struct GpuMemoryManager
 {
 	struct MemoryData
 	{
 		float* address;
 		size_t size;
-		size_t staticSize;
 		size_t dynamicSize;
 		float ratio;
 	};
@@ -24,7 +32,7 @@ struct GpuMemoryManager
 		MemoryData* frag;
 	};
 
-	std::vector<MemoryData*> MemFrags;
+	std::vector<MemoryData*> availableMemory;
 	std::vector<TensorData*> dynamicTensors;
 	std::vector<TensorData*> staticTensors;
 
@@ -38,14 +46,10 @@ struct GpuMemoryManager
 			frag->address = nullptr;
 			frag->size = i * 102400 + 10240;
 			frag->dynamicSize = 0;
-			MemFrags.emplace_back(frag);
+			availableMemory.emplace_back(frag);
 		}
 
-		if (MemFrags.size() <= 0)
-		{
-			fprintf(stderr, "Memory size is <= 0\n");
-			exit(EXIT_FAILURE);
-		}
+		FailIf(availableMemory.size() <= 0, "Memory size is <= 0");
 	}
 
 	void ManageDynamic(float** tensorPtr, size_t size)
@@ -66,7 +70,7 @@ struct GpuMemoryManager
 
 	void Print()
 	{
-		for (auto& frag : MemFrags)
+		for (auto& frag : availableMemory)
 			printf("Frag size: %d, address: %p, ratio: %f\n", frag->size, frag->address, frag->ratio);
 		printf("\n");
 
@@ -84,89 +88,78 @@ struct GpuMemoryManager
 		size_t fragSize = 0;
 		size_t dynamicTensorSize = 0;
 
-		for (auto& frag : MemFrags)
+		for (auto& frag : availableMemory)
 			fragSize += frag->size;
 		for (auto& tensor : staticTensors)
 		{
-			if (tensor->size > fragSize)
-			{
-				fprintf(stderr, "Static tensor size is larger than total memory size\n");
-				exit(EXIT_FAILURE);
-			}
+			FailIf(tensor->size > fragSize, "Static tensor size is larger than total memory size");
 			fragSize -= tensor->size;
 		}
 		for (auto& tensor : dynamicTensors)
 			dynamicTensorSize += tensor->size;
 
-		for (auto& frag : MemFrags)
+		for (auto& frag : availableMemory)
 			frag->ratio = (float)frag->size / fragSize;
 		for (auto& tensor : staticTensors)
 			tensor->ratio = (float)tensor->size / fragSize;
 		for (auto& tensor : dynamicTensors)
 			tensor->ratio = (float)tensor->size / dynamicTensorSize;
 
-		//Print();
-
+		size_t largestN = 0;
 		float bestScore = FLT_MAX;
 		std::vector<MemoryData*> bestCombination(staticTensors.size() + dynamicTensors.size());
-		allocateStatic(0, bestScore, bestCombination);
+		allocateStatic(0, bestScore, bestCombination, largestN);
+		printf("largest N: %d\n\n", largestN);
 
-		for (uint32_t i = 0; i < staticTensors.size(); ++i)
-		{
-			bestCombination[i]->ratio -= staticTensors[i]->ratio;
-			bestCombination[i]->staticSize += staticTensors[i]->size;
-		}
+		for (auto& tensor : dynamicTensors)
+			delete tensor;
+		for (auto& tensor : staticTensors)
+			delete tensor;
 
-		for (uint32_t i = 0; i < dynamicTensors.size(); ++i)
-		{
-			bestCombination[i + staticTensors.size()]->ratio -= dynamicTensors[i]->ratio;
-			bestCombination[i + staticTensors.size()]->dynamicSize += dynamicTensors[i]->size;
-		}
-
-		size_t largestN = 0;
-		float smallestRatio = 1;
-		for (auto& frag : MemFrags)
-		{
-			if (frag->ratio <= smallestRatio)
-			{
-				smallestRatio = frag->ratio;
-				if (frag->dynamicSize > 0)
-					largestN = (frag->size - frag->staticSize) / frag->dynamicSize;
-			}
-		}
-		printf("largest N: %d\n", largestN);
-
-		for (auto& frag : MemFrags)
-			printf("size: %zu, static size: %zu, dynamic size: %zu, leftover: %zu\n", frag->size, frag->staticSize, frag->dynamicSize, frag->size - frag->staticSize - frag->dynamicSize * largestN);
-		printf("\n");
+		dynamicTensors.clear();
+		staticTensors.clear();
 	}
 
-	void allocateStatic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination)
+	void allocateStatic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
 	{
 		if (tensorIdx == staticTensors.size())
-			allocateDynamic(0, bestScore, bestCombination);
+			allocateDynamic(0, bestScore, bestCombination, largestN);
 		else
-			for (MemoryData* frag : MemFrags)
-				if (frag->ratio >= staticTensors[tensorIdx]->ratio)
+			for (MemoryData* frag : availableMemory)
+				if (frag->size >= staticTensors[tensorIdx]->size)
 				{
 					staticTensors[tensorIdx]->frag = frag;
-					float score = frag->ratio;
+					float preRatio = frag->ratio;
+					size_t preSize = frag->size;
 					frag->ratio -= staticTensors[tensorIdx]->ratio;
-					allocateStatic(tensorIdx + 1, bestScore, bestCombination);
-					frag->ratio = score;
+					frag->size -= staticTensors[tensorIdx]->size;
+					allocateStatic(tensorIdx + 1, bestScore, bestCombination, largestN);
+					frag->ratio = preRatio;
+					frag->size = preSize;
 				}
 	}
 
-	void allocateDynamic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination)
+	void allocateDynamic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
 	{
 		if (tensorIdx == dynamicTensors.size())
 		{
 			float score = 0;
-			for (MemoryData* frag : MemFrags)
+			for (MemoryData* frag : availableMemory)
 				score += abs(frag->ratio);
 
 			if (score < bestScore)
 			{
+				float smallestRatio = 1;
+				size_t size, dynamicSize;
+				for (auto& frag : availableMemory)
+					if (frag->dynamicSize > 0 && frag->ratio < smallestRatio)
+					{
+						smallestRatio = frag->ratio;
+						size = frag->size;
+						dynamicSize = frag->dynamicSize;
+					}
+				largestN = size / dynamicSize;
+
 				bestScore = score;
 				for (int i = 0; i < staticTensors.size(); ++i)
 					bestCombination[i] = staticTensors[i]->frag;
@@ -175,13 +168,16 @@ struct GpuMemoryManager
 			}
 		}
 		else
-			for (MemoryData* frag : MemFrags)
+			for (MemoryData* frag : availableMemory)
 			{
 				dynamicTensors[tensorIdx]->frag = frag;
-				float score = frag->ratio;
+				float preRatio = frag->ratio;
+				float preDynamicSize = frag->dynamicSize;
 				frag->ratio -= dynamicTensors[tensorIdx]->ratio;
-				allocateDynamic(tensorIdx + 1, bestScore, bestCombination);
-				frag->ratio = score;
+				frag->dynamicSize += dynamicTensors[tensorIdx]->size;
+				allocateDynamic(tensorIdx + 1, bestScore, bestCombination, largestN);
+				frag->ratio = preRatio;
+				frag->dynamicSize = preDynamicSize;
 			}
 	}
 };
