@@ -9,7 +9,7 @@ void FailIf(bool condition, const char* message)
 {
 	if (condition)
 	{
-		fprintf(stderr, "%s\n", message);
+		fprintf(stderr, "%s", message);
 		abort();
 	}
 }
@@ -29,7 +29,7 @@ struct GpuMemoryManager
 		float** address;
 		size_t size;
 		float ratio;
-		MemoryData* frag;
+		MemoryData* memoryPtr;
 	};
 
 	std::vector<MemoryData*> availableMemory;
@@ -39,25 +39,17 @@ struct GpuMemoryManager
 	GpuMemoryManager()
 	{
 		printf("Initializing GPU memory manager...\n");
-
 		for (uint32_t i = 0; i < 2; ++i)
 		{
-			MemoryData* frag = new MemoryData;
-			frag->address = nullptr;
-			frag->size = i * 102400 + 10240;
-			frag->dynamicSize = 0;
-			availableMemory.emplace_back(frag);
+			MemoryData* memoryPtr = new MemoryData;
+			memoryPtr->size = i * 102 + 10;
+			memoryPtr->address = new float[memoryPtr->size];
+			memset(memoryPtr->address, 0, memoryPtr->size * sizeof(float));
+			memoryPtr->dynamicSize = 0;
+			availableMemory.emplace_back(memoryPtr);
+			FailIf(memoryPtr->size <= 0, "Memory size is <= 0\n");
 		}
-
-		FailIf(availableMemory.size() <= 0, "Memory size is <= 0");
-	}
-
-	void ManageDynamic(float** tensorPtr, size_t size)
-	{
-		TensorData* tensorData = new TensorData;
-		tensorData->address = tensorPtr;
-		tensorData->size = size;
-		dynamicTensors.emplace_back(tensorData);
+		FailIf(availableMemory.size() <= 0, "No available memory\n");
 	}
 
 	void ManageStatic(float** tensorPtr, size_t size)
@@ -66,51 +58,123 @@ struct GpuMemoryManager
 		tensorData->address = tensorPtr;
 		tensorData->size = size;
 		staticTensors.emplace_back(tensorData);
+		FailIf(tensorData->size <= 0, "Static Tensor size is <= 0\n");
 	}
 
-	void Print()
+	void ManageDynamic(float** tensorPtr, size_t size)
 	{
-		for (auto& frag : availableMemory)
-			printf("Frag size: %d, address: %p, ratio: %f\n", frag->size, frag->address, frag->ratio);
-		printf("\n");
-
-		for (auto& tensor : dynamicTensors)
-			printf("Dynamic tensor size: %d, address: %p, ratio: %f\n", tensor->size, tensor->address, tensor->ratio);
-		printf("\n");
-
-		for (auto& tensor : staticTensors)
-			printf("Static tensor size: %d, address: %p, ratio: %f\n", tensor->size, tensor->address, tensor->ratio);
-		printf("\n");
+		TensorData* tensorData = new TensorData;
+		tensorData->address = tensorPtr;
+		tensorData->size = size;
+		dynamicTensors.emplace_back(tensorData);
+		FailIf(tensorData->size <= 0, "Dynamic Tensor size is <= 0\n");
 	}
 
-	void Allocate()
+	void allocateStatic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
+	{
+		if (tensorIdx == staticTensors.size())
+			allocateDynamic(0, bestScore, bestCombination, largestN);
+		else
+			for (MemoryData* memoryPtr : availableMemory)
+				if (memoryPtr->size >= staticTensors[tensorIdx]->size)
+				{
+					staticTensors[tensorIdx]->memoryPtr = memoryPtr;
+					memoryPtr->ratio -= staticTensors[tensorIdx]->ratio;
+					memoryPtr->size -= staticTensors[tensorIdx]->size;
+					allocateStatic(tensorIdx + 1, bestScore, bestCombination, largestN);
+					memoryPtr->ratio += staticTensors[tensorIdx]->ratio;
+					memoryPtr->size += staticTensors[tensorIdx]->size;
+				}
+	}
+
+	void allocateDynamic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
+	{
+		if (tensorIdx == dynamicTensors.size())
+		{
+			float score = 0;
+			for (MemoryData* memoryPtr : availableMemory)
+				score += abs(memoryPtr->ratio);
+
+			if (score < bestScore)
+			{
+				float smallestRatio = 1;
+				size_t size, dynamicSize;
+				for (auto& memoryPtr : availableMemory)
+					if (memoryPtr->dynamicSize > 0 && memoryPtr->ratio < smallestRatio)
+					{
+						smallestRatio = memoryPtr->ratio;
+						size = memoryPtr->size;
+						dynamicSize = memoryPtr->dynamicSize;
+					}
+				largestN = size / dynamicSize;
+				printf("Largest N: %zu\n", largestN);
+				printf("Leftover memory: %zu\n", size - dynamicSize * largestN);
+
+				bestScore = score;
+				for (int i = 0; i < staticTensors.size(); ++i)
+					bestCombination[i] = staticTensors[i]->memoryPtr;
+				for (int i = 0; i < dynamicTensors.size(); ++i)
+					bestCombination[i + staticTensors.size()] = dynamicTensors[i]->memoryPtr;
+			}
+		}
+		else
+			for (MemoryData* memoryPtr : availableMemory)
+			{
+				dynamicTensors[tensorIdx]->memoryPtr = memoryPtr;
+				memoryPtr->ratio -= dynamicTensors[tensorIdx]->ratio;
+				memoryPtr->dynamicSize += dynamicTensors[tensorIdx]->size;
+				allocateDynamic(tensorIdx + 1, bestScore, bestCombination, largestN);
+				memoryPtr->ratio += dynamicTensors[tensorIdx]->ratio;
+				memoryPtr->dynamicSize -= dynamicTensors[tensorIdx]->size;
+			}
+	}
+
+	void Allocate(size_t& largestN)
 	{
 		size_t fragSize = 0;
 		size_t dynamicTensorSize = 0;
 
-		for (auto& frag : availableMemory)
-			fragSize += frag->size;
+		for (auto& memoryPtr : availableMemory)
+			fragSize += memoryPtr->size;
 		for (auto& tensor : staticTensors)
 		{
-			FailIf(tensor->size > fragSize, "Static tensor size is larger than total memory size");
+			FailIf(tensor->size > fragSize, "Static tensor size is larger than total memory size\n");
 			fragSize -= tensor->size;
 		}
 		for (auto& tensor : dynamicTensors)
 			dynamicTensorSize += tensor->size;
 
-		for (auto& frag : availableMemory)
-			frag->ratio = (float)frag->size / fragSize;
+		for (auto& memoryPtr : availableMemory)
+			memoryPtr->ratio = (float)memoryPtr->size / fragSize;
 		for (auto& tensor : staticTensors)
 			tensor->ratio = (float)tensor->size / fragSize;
 		for (auto& tensor : dynamicTensors)
 			tensor->ratio = (float)tensor->size / dynamicTensorSize;
 
-		size_t largestN = 0;
+		largestN = 0;
 		float bestScore = FLT_MAX;
 		std::vector<MemoryData*> bestCombination(staticTensors.size() + dynamicTensors.size());
 		allocateStatic(0, bestScore, bestCombination, largestN);
-		printf("largest N: %d\n\n", largestN);
 
+		// allocate memory
+		for (auto& memoryPtr : availableMemory)
+			memoryPtr->size = 0;
+
+		for (int i = 0; i < staticTensors.size(); ++i)
+		{
+			MemoryData* memoryPtr = bestCombination[i];
+			*staticTensors[i]->address = memoryPtr->address + memoryPtr->size;
+			memoryPtr->size += staticTensors[i]->size;
+		}
+
+		for (int i = 0; i < dynamicTensors.size(); ++i)
+		{
+			MemoryData* memoryPtr = bestCombination[i + staticTensors.size()];
+			*dynamicTensors[i]->address = memoryPtr->address + memoryPtr->size;
+			memoryPtr->size += dynamicTensors[i]->size * largestN;
+		}
+
+		// clean up
 		for (auto& tensor : dynamicTensors)
 			delete tensor;
 		for (auto& tensor : staticTensors)
@@ -120,65 +184,11 @@ struct GpuMemoryManager
 		staticTensors.clear();
 	}
 
-	void allocateStatic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
+	void PrintMemory() const
 	{
-		if (tensorIdx == staticTensors.size())
-			allocateDynamic(0, bestScore, bestCombination, largestN);
-		else
-			for (MemoryData* frag : availableMemory)
-				if (frag->size >= staticTensors[tensorIdx]->size)
-				{
-					staticTensors[tensorIdx]->frag = frag;
-					float preRatio = frag->ratio;
-					size_t preSize = frag->size;
-					frag->ratio -= staticTensors[tensorIdx]->ratio;
-					frag->size -= staticTensors[tensorIdx]->size;
-					allocateStatic(tensorIdx + 1, bestScore, bestCombination, largestN);
-					frag->ratio = preRatio;
-					frag->size = preSize;
-				}
-	}
-
-	void allocateDynamic(uint32_t tensorIdx, float& bestScore, std::vector<MemoryData*>& bestCombination, size_t& largestN)
-	{
-		if (tensorIdx == dynamicTensors.size())
-		{
-			float score = 0;
-			for (MemoryData* frag : availableMemory)
-				score += abs(frag->ratio);
-
-			if (score < bestScore)
-			{
-				float smallestRatio = 1;
-				size_t size, dynamicSize;
-				for (auto& frag : availableMemory)
-					if (frag->dynamicSize > 0 && frag->ratio < smallestRatio)
-					{
-						smallestRatio = frag->ratio;
-						size = frag->size;
-						dynamicSize = frag->dynamicSize;
-					}
-				largestN = size / dynamicSize;
-
-				bestScore = score;
-				for (int i = 0; i < staticTensors.size(); ++i)
-					bestCombination[i] = staticTensors[i]->frag;
-				for (int i = 0; i < dynamicTensors.size(); ++i)
-					bestCombination[i + staticTensors.size()] = dynamicTensors[i]->frag;
-			}
-		}
-		else
-			for (MemoryData* frag : availableMemory)
-			{
-				dynamicTensors[tensorIdx]->frag = frag;
-				float preRatio = frag->ratio;
-				float preDynamicSize = frag->dynamicSize;
-				frag->ratio -= dynamicTensors[tensorIdx]->ratio;
-				frag->dynamicSize += dynamicTensors[tensorIdx]->size;
-				allocateDynamic(tensorIdx + 1, bestScore, bestCombination, largestN);
-				frag->ratio = preRatio;
-				frag->dynamicSize = preDynamicSize;
-			}
+		for (auto& memoryPtr : availableMemory)
+			for (int i = 0; i < memoryPtr->size; ++i)
+				printf("%1.0f ", memoryPtr->address[i]);
 	}
 };
 
@@ -186,17 +196,31 @@ int main()
 {
 	GpuMemoryManager gpuMemoryManager;
 
-	float* staticArr1 = nullptr;
-	float* staticArr2 = nullptr;
-	float* dynamicArr1 = nullptr;
-	float* dynamicArr2 = nullptr;
+	size_t batches;
+	float* staticArr1, * staticArr2, * dynamicArr1, * dynamicArr2;
+	size_t sSize1 = 10;
+	size_t sSize2 = 20;
+	size_t dCoef1 = 6;
+	size_t dCoef2 = 7;
 
-	gpuMemoryManager.ManageStatic(&staticArr1, 1000);
-	gpuMemoryManager.ManageStatic(&staticArr2, 2000);
-	gpuMemoryManager.ManageDynamic(&dynamicArr1, 3);
-	gpuMemoryManager.ManageDynamic(&dynamicArr2, 4);
+	gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
+	gpuMemoryManager.ManageStatic(&staticArr2, sSize2);
+	gpuMemoryManager.ManageDynamic(&dynamicArr1, dCoef1);
+	gpuMemoryManager.ManageDynamic(&dynamicArr2, dCoef2);
 
-	gpuMemoryManager.Allocate();
+	gpuMemoryManager.Allocate(batches);
+	printf("batches: %zu\n\n", batches);
+
+	for (int i = 0; i < sSize1; ++i)
+		staticArr1[i] = i;
+	for (int i = 0; i < sSize2; ++i)
+		staticArr2[i] = i;
+	for (int i = 0; i < dCoef1 * batches; ++i)
+		dynamicArr1[i] = i;
+	for (int i = 0; i < dCoef2 * batches; ++i)
+		dynamicArr2[i] = i;
+
+	gpuMemoryManager.PrintMemory();
 
 	return 0;
 }
