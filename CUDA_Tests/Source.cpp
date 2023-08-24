@@ -6,7 +6,7 @@ void FailIf(bool condition, const char* message)
 	if (condition)
 	{
 		fprintf(stderr, "%s", message);
-		abort();
+		exit(0);
 	}
 }
 
@@ -155,6 +155,8 @@ struct GpuMemoryManager
 		std::vector<MemoryData*> bestCombination(staticTensors.size() + dynamicTensors.size());
 		allocateStatic(0, largestRatio, bestCombination, largestN);
 
+		FailIf(bestCombination[0] == nullptr, "No combination found\n");
+
 		// allocate memory
 		for (auto& memoryPtr : availableMemory)
 			memoryPtr->dynamicSize = 0;
@@ -201,11 +203,11 @@ int main()
 	size_t batches;
 	float* staticArr1, * staticArr2, * dynamicArr1, * dynamicArr2;
 	size_t sSize1 = 10;
-	size_t sSize2 = 20;
+	size_t sSize2 = 120;
 	size_t dCoef1 = 3;
 	size_t dCoef2 = 5;
 
-	gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
+	//gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
 	gpuMemoryManager.ManageStatic(&staticArr2, sSize2);
 	/*gpuMemoryManager.ManageDynamic(&dynamicArr1, dCoef1);
 	gpuMemoryManager.ManageDynamic(&dynamicArr2, dCoef2);*/
@@ -213,8 +215,8 @@ int main()
 	gpuMemoryManager.Allocate(batches);
 	printf("batches: %zu\n\n", batches);
 
-	for (int i = 0; i < sSize1; ++i)
-		staticArr1[i] = i;
+	/*for (int i = 0; i < sSize1; ++i)
+		staticArr1[i] = i;*/
 	for (int i = 0; i < sSize2; ++i)
 		staticArr2[i] = i;
 	/*for (int i = 0; i < dCoef1 * batches; ++i)
