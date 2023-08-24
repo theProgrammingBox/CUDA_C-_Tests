@@ -35,12 +35,12 @@ struct GpuMemoryManager
 	GpuMemoryManager()
 	{
 		printf("Initializing GPU memory manager...\n\n");
-		for (uint32_t i = 0; i < 2; ++i)
+		for (uint32_t i = 0; i < 1; ++i)
 		{
 			MemoryData* memoryPtr = new MemoryData;
-			memoryPtr->size = i * 102 + 13;
-			memoryPtr->address = new float[memoryPtr->size];
-			memset(memoryPtr->address, 0, memoryPtr->size * sizeof(float));
+			memoryPtr->size = 15726542848 >> 2;
+			memoryPtr->address = nullptr;
+			//memset(memoryPtr->address, 0, memoryPtr->size * sizeof(float));
 			memoryPtr->dynamicSize = 0;
 			availableMemory.emplace_back(memoryPtr);
 			FailIf(memoryPtr->size <= 0, "Memory size is <= 0\n");
@@ -109,6 +109,10 @@ struct GpuMemoryManager
 				if (dynamicSize > 0)
 					largestN = size / dynamicSize;
 				largestRatio = smallestRatio;
+				printf("size: %zu\n", size);
+				printf("dynamicSize: %zu\n", dynamicSize);
+				printf("largestN: %zu\n", largestN);
+				printf("leftover: %zu\n", size - largestN * dynamicSize);
 
 				for (int i = 0; i < staticTensors.size(); ++i)
 					bestCombination[i] = staticTensors[i]->memoryPtr;
@@ -207,24 +211,24 @@ int main()
 	size_t dCoef1 = 3;
 	size_t dCoef2 = 5;
 
-	//gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
+	gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
 	gpuMemoryManager.ManageStatic(&staticArr2, sSize2);
-	/*gpuMemoryManager.ManageDynamic(&dynamicArr1, dCoef1);
-	gpuMemoryManager.ManageDynamic(&dynamicArr2, dCoef2);*/
+	gpuMemoryManager.ManageDynamic(&dynamicArr1, dCoef1);
+	gpuMemoryManager.ManageDynamic(&dynamicArr2, dCoef2);
 
 	gpuMemoryManager.Allocate(batches);
 	printf("batches: %zu\n\n", batches);
 
 	/*for (int i = 0; i < sSize1; ++i)
 		staticArr1[i] = i;*/
-	for (int i = 0; i < sSize2; ++i)
-		staticArr2[i] = i;
+	/*for (int i = 0; i < sSize2; ++i)
+		staticArr2[i] = i;*/
 	/*for (int i = 0; i < dCoef1 * batches; ++i)
 		dynamicArr1[i] = i;
 	for (int i = 0; i < dCoef2 * batches; ++i)
 		dynamicArr2[i] = i;*/
 
-	gpuMemoryManager.PrintMemory();
+	//gpuMemoryManager.PrintMemory();
 
 	return 0;
 }
