@@ -38,7 +38,7 @@ struct GpuMemoryManager
 
 	GpuMemoryManager()
 	{
-		printf("Initializing GPU memory manager...\n");
+		printf("Initializing GPU memory manager...\n\n");
 		for (uint32_t i = 0; i < 2; ++i)
 		{
 			MemoryData* memoryPtr = new MemoryData;
@@ -108,7 +108,7 @@ struct GpuMemoryManager
 					}
 				largestN = size / dynamicSize;
 				printf("Largest N: %zu\n", largestN);
-				printf("Leftover memory: %zu\n", size - dynamicSize * largestN);
+				printf("Leftover memory: %zu\n\n", size - dynamicSize * largestN);
 
 				bestScore = score;
 				for (int i = 0; i < staticTensors.size(); ++i)
@@ -158,20 +158,20 @@ struct GpuMemoryManager
 
 		// allocate memory
 		for (auto& memoryPtr : availableMemory)
-			memoryPtr->size = 0;
+			memoryPtr->dynamicSize = 0;
 
 		for (int i = 0; i < staticTensors.size(); ++i)
 		{
 			MemoryData* memoryPtr = bestCombination[i];
-			*staticTensors[i]->address = memoryPtr->address + memoryPtr->size;
-			memoryPtr->size += staticTensors[i]->size;
+			*staticTensors[i]->address = memoryPtr->address + memoryPtr->dynamicSize;
+			memoryPtr->dynamicSize += staticTensors[i]->size;
 		}
 
 		for (int i = 0; i < dynamicTensors.size(); ++i)
 		{
 			MemoryData* memoryPtr = bestCombination[i + staticTensors.size()];
-			*dynamicTensors[i]->address = memoryPtr->address + memoryPtr->size;
-			memoryPtr->size += dynamicTensors[i]->size * largestN;
+			*dynamicTensors[i]->address = memoryPtr->address + memoryPtr->dynamicSize;
+			memoryPtr->dynamicSize += dynamicTensors[i]->size * largestN;
 		}
 
 		// clean up
@@ -200,8 +200,8 @@ int main()
 	float* staticArr1, * staticArr2, * dynamicArr1, * dynamicArr2;
 	size_t sSize1 = 10;
 	size_t sSize2 = 20;
-	size_t dCoef1 = 6;
-	size_t dCoef2 = 7;
+	size_t dCoef1 = 3;
+	size_t dCoef2 = 5;
 
 	gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
 	gpuMemoryManager.ManageStatic(&staticArr2, sSize2);
