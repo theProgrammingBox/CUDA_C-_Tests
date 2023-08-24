@@ -1,10 +1,6 @@
 ﻿#include <stdio.h>	// printf
 #include <vector>	// std::vector
 
-/*
-seperate working vectors from struct
-*/
-
 void FailIf(bool condition, const char* message)
 {
 	if (condition)
@@ -42,7 +38,7 @@ struct GpuMemoryManager
 		for (uint32_t i = 0; i < 2; ++i)
 		{
 			MemoryData* memoryPtr = new MemoryData;
-			memoryPtr->size = i * 102 + 10;
+			memoryPtr->size = i * 102 + 13;
 			memoryPtr->address = new float[memoryPtr->size];
 			memset(memoryPtr->address, 0, memoryPtr->size * sizeof(float));
 			memoryPtr->dynamicSize = 0;
@@ -50,6 +46,12 @@ struct GpuMemoryManager
 			FailIf(memoryPtr->size <= 0, "Memory size is <= 0\n");
 		}
 		FailIf(availableMemory.size() <= 0, "No available memory\n");
+	}
+
+	~GpuMemoryManager()
+	{
+		for (auto& memoryPtr : availableMemory)
+			delete[] memoryPtr->address;
 	}
 
 	void ManageStatic(float** tensorPtr, size_t size)
@@ -98,7 +100,8 @@ struct GpuMemoryManager
 			if (score < bestScore)
 			{
 				float smallestRatio = 1;
-				size_t size, dynamicSize;
+				size_t size = 0;
+				size_t dynamicSize = 0;
 				for (auto& memoryPtr : availableMemory)
 					if (memoryPtr->dynamicSize > 0 && memoryPtr->ratio < smallestRatio)
 					{
@@ -106,9 +109,8 @@ struct GpuMemoryManager
 						size = memoryPtr->size;
 						dynamicSize = memoryPtr->dynamicSize;
 					}
-				largestN = size / dynamicSize;
-				printf("Largest N: %zu\n", largestN);
-				printf("Leftover memory: %zu\n\n", size - dynamicSize * largestN);
+				if (dynamicSize > 0)
+					largestN = size / dynamicSize;
 
 				bestScore = score;
 				for (int i = 0; i < staticTensors.size(); ++i)
@@ -187,8 +189,11 @@ struct GpuMemoryManager
 	void PrintMemory() const
 	{
 		for (auto& memoryPtr : availableMemory)
+		{
 			for (int i = 0; i < memoryPtr->size; ++i)
 				printf("%1.0f ", memoryPtr->address[i]);
+			printf("\n");
+		}
 	}
 };
 
