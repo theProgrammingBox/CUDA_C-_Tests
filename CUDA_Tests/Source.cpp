@@ -1,234 +1,112 @@
-﻿#include <stdio.h>	// printf
-#include <vector>	// std::vector
+﻿#include <iostream>
+#include "GpuMemoryManager.cuh"
 
-void FailIf(bool condition, const char* message)
-{
-	if (condition)
-	{
-		fprintf(stderr, "%s", message);
-		exit(0);
+#include <cublas_v2.h>
+#include <cuda_runtime.h>
+
+struct Layer {
+	cublasHandle_t* cublasHandle;
+	GpuMemoryManager* gpuMemoryManager;
+	GpuRand* gpuRand;
+	size_t* inputHeight;
+	float* learningRate;
+
+	size_t inputWidth;
+	float* deviceInputTensor;
+
+	Layer(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate) :
+		cublasHandle(cublasHandle), gpuMemoryManager(gpuMemoryManager), gpuRand(gpuRand), inputHeight(inputHeight), learningRate(learningRate) {}
+
+	void DescribeInputDetails(size_t inputWidth, float* deviceInputTensor) {
+		this->inputWidth = inputWidth;
+		this->deviceInputTensor = deviceInputTensor;
 	}
-}
+	virtual void DescribeTensorDetails() = 0;
+	virtual void InitializeParameters() = 0;
+	virtual void Forward() = 0;
+	virtual void Backward() = 0;
+	virtual void PrintParameters() = 0;
+};
 
-struct GpuMemoryManager
-{
-	struct MemoryData
-	{
-		float* address;
-		size_t size;
-		size_t dynamicSize;
-		float ratio;
-	};
+struct WeightLayer : Layer {
+	size_t outputWidth;
+	float* deviceWeightTensor;
+	float* deviceOutputTensor;
 
-	struct TensorData
-	{
-		float** address;
-		size_t size;
-		float ratio;
-		MemoryData* memoryPtr;
-	};
+	WeightLayer(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate, size_t outputWidth) :
+		Layer(cublasHandle, gpuMemoryManager, gpuRand, inputHeight, learningRate), outputWidth(outputWidth) {}
 
-	std::vector<MemoryData*> availableMemory;
-	std::vector<TensorData*> dynamicTensors;
-	std::vector<TensorData*> staticTensors;
-
-	GpuMemoryManager()
-	{
-		printf("Initializing GPU memory manager...\n\n");
-		for (uint32_t i = 0; i < 1; ++i)
-		{
-			MemoryData* memoryPtr = new MemoryData;
-			memoryPtr->size = 15726542848 >> 2;
-			memoryPtr->address = nullptr;
-			//memset(memoryPtr->address, 0, memoryPtr->size * sizeof(float));
-			memoryPtr->dynamicSize = 0;
-			availableMemory.emplace_back(memoryPtr);
-			FailIf(memoryPtr->size <= 0, "Memory size is <= 0\n");
-		}
-		FailIf(availableMemory.size() <= 0, "No available memory\n");
+	void DescribeTensorDetails() {
+		gpuMemoryManager->ManageStatic(&deviceWeightTensor, inputWidth * outputWidth);
+		gpuMemoryManager->ManageDynamic(&deviceOutputTensor, inputWidth);
 	}
 
-	~GpuMemoryManager()
-	{
-		for (auto& memoryPtr : availableMemory)
-			delete[] memoryPtr->address;
+	void InitializeParameters() {
+		gpuRand->Rand(deviceWeightTensor, inputWidth * outputWidth);
 	}
 
-	void ManageStatic(float** tensorPtr, size_t size)
-	{
-		TensorData* tensorData = new TensorData;
-		tensorData->address = tensorPtr;
-		tensorData->size = size;
-		staticTensors.emplace_back(tensorData);
-		FailIf(tensorData->size <= 0, "Static Tensor size is <= 0\n");
+	void Forward() {
+		float alpha = 1.0f;
+		float beta = 0.0f;
+		FailIf(
+			cublasSgemm(
+				*cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+				outputWidth, *inputHeight, inputWidth,
+				&alpha,
+				deviceWeightTensor, outputWidth,
+				deviceOutputTensor, inputWidth,
+				&beta,
+				deviceOutputTensor, outputWidth
+			) != CUBLAS_STATUS_SUCCESS, "cublasSgemm failed"
+		);
 	}
 
-	void ManageDynamic(float** tensorPtr, size_t size)
-	{
-		TensorData* tensorData = new TensorData;
-		tensorData->address = tensorPtr;
-		tensorData->size = size;
-		dynamicTensors.emplace_back(tensorData);
-		FailIf(tensorData->size <= 0, "Dynamic Tensor size is <= 0\n");
+	void Backward() {
 	}
 
-	void allocateStatic(uint32_t tensorIdx, float& largestRatio, std::vector<MemoryData*>& bestCombination, size_t& largestN)
-	{
-		if (tensorIdx == staticTensors.size())
-			allocateDynamic(0, largestRatio, bestCombination, largestN);
-		else
-			for (MemoryData* memoryPtr : availableMemory)
-				if (memoryPtr->size >= staticTensors[tensorIdx]->size)
-				{
-					staticTensors[tensorIdx]->memoryPtr = memoryPtr;
-					memoryPtr->ratio -= staticTensors[tensorIdx]->ratio;
-					memoryPtr->size -= staticTensors[tensorIdx]->size;
-					allocateStatic(tensorIdx + 1, largestRatio, bestCombination, largestN);
-					memoryPtr->ratio += staticTensors[tensorIdx]->ratio;
-					memoryPtr->size += staticTensors[tensorIdx]->size;
-				}
-	}
-
-	void allocateDynamic(uint32_t tensorIdx, float& largestRatio, std::vector<MemoryData*>& bestCombination, size_t& largestN)
-	{
-		if (tensorIdx == dynamicTensors.size())
-		{
-			float smallestRatio = 1;
-			size_t size = 0;
-			size_t dynamicSize = 0;
-			for (auto& memoryPtr : availableMemory)
-				if (memoryPtr->dynamicSize > 0 && memoryPtr->ratio < smallestRatio)
-				{
-					smallestRatio = memoryPtr->ratio;
-					size = memoryPtr->size;
-					dynamicSize = memoryPtr->dynamicSize;
-				}
-
-			if (smallestRatio > largestRatio)
-			{
-				if (dynamicSize > 0)
-					largestN = size / dynamicSize;
-				largestRatio = smallestRatio;
-				printf("size: %zu\n", size);
-				printf("dynamicSize: %zu\n", dynamicSize);
-				printf("largestN: %zu\n", largestN);
-				printf("leftover: %zu\n", size - largestN * dynamicSize);
-
-				for (int i = 0; i < staticTensors.size(); ++i)
-					bestCombination[i] = staticTensors[i]->memoryPtr;
-				for (int i = 0; i < dynamicTensors.size(); ++i)
-					bestCombination[i + staticTensors.size()] = dynamicTensors[i]->memoryPtr;
-			}
-		}
-		else
-			for (MemoryData* memoryPtr : availableMemory)
-			{
-				dynamicTensors[tensorIdx]->memoryPtr = memoryPtr;
-				memoryPtr->ratio -= dynamicTensors[tensorIdx]->ratio;
-				memoryPtr->dynamicSize += dynamicTensors[tensorIdx]->size;
-				allocateDynamic(tensorIdx + 1, largestRatio, bestCombination, largestN);
-				memoryPtr->ratio += dynamicTensors[tensorIdx]->ratio;
-				memoryPtr->dynamicSize -= dynamicTensors[tensorIdx]->size;
-			}
-	}
-
-	void Allocate(size_t& largestN)
-	{
-		size_t fragSize = 0;
-		size_t dynamicTensorSize = 0;
-
-		for (auto& memoryPtr : availableMemory)
-			fragSize += memoryPtr->size;
-		for (auto& tensor : staticTensors)
-		{
-			FailIf(tensor->size > fragSize, "Static tensor size is larger than total memory size\n");
-			fragSize -= tensor->size;
-		}
-		for (auto& tensor : dynamicTensors)
-			dynamicTensorSize += tensor->size;
-
-		for (auto& memoryPtr : availableMemory)
-			memoryPtr->ratio = (float)memoryPtr->size / fragSize;
-		for (auto& tensor : staticTensors)
-			tensor->ratio = (float)tensor->size / fragSize;
-		for (auto& tensor : dynamicTensors)
-			tensor->ratio = (float)tensor->size / dynamicTensorSize;
-
-		largestN = 0;
-		float largestRatio = -1;
-		std::vector<MemoryData*> bestCombination(staticTensors.size() + dynamicTensors.size());
-		allocateStatic(0, largestRatio, bestCombination, largestN);
-
-		FailIf(bestCombination[0] == nullptr, "No combination found\n");
-
-		// allocate memory
-		for (auto& memoryPtr : availableMemory)
-			memoryPtr->dynamicSize = 0;
-
-		for (int i = 0; i < staticTensors.size(); ++i)
-		{
-			MemoryData* memoryPtr = bestCombination[i];
-			*staticTensors[i]->address = memoryPtr->address + memoryPtr->dynamicSize;
-			memoryPtr->dynamicSize += staticTensors[i]->size;
-		}
-
-		for (int i = 0; i < dynamicTensors.size(); ++i)
-		{
-			MemoryData* memoryPtr = bestCombination[i + staticTensors.size()];
-			*dynamicTensors[i]->address = memoryPtr->address + memoryPtr->dynamicSize;
-			memoryPtr->dynamicSize += dynamicTensors[i]->size * largestN;
-		}
-
-		// clean up
-		for (auto& tensor : dynamicTensors)
-			delete tensor;
-		for (auto& tensor : staticTensors)
-			delete tensor;
-
-		dynamicTensors.clear();
-		staticTensors.clear();
-	}
-
-	void PrintMemory() const
-	{
-		for (auto& memoryPtr : availableMemory)
-		{
-			for (int i = 0; i < memoryPtr->size; ++i)
-				printf("%1.0f ", memoryPtr->address[i]);
-			printf("\n\n");
-		}
+	void PrintParameters() {
+		PrintDeviceTensorf32(inputWidth, outputWidth, deviceWeightTensor, "deviceWeightTensor");
+		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceOutputTensor, "deviceOutputTensor");
 	}
 };
 
-int main()
-{
+int main() {
+	cublasHandle_t cublasHandle;
 	GpuMemoryManager gpuMemoryManager;
+	GpuRand gpuRand;
+	size_t inputHeight = 1;
+	float learningRate = 0.0001f;
 
-	size_t batches;
-	float* staticArr1, * staticArr2, * dynamicArr1, * dynamicArr2;
-	size_t sSize1 = 10;
-	size_t sSize2 = 120;
-	size_t dCoef1 = 3;
-	size_t dCoef2 = 5;
+	FailIf(cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS, "cublasCreate failed");
+	gpuMemoryManager.MapGpuMemory();
+	inputHeight = 1;
+	learningRate = 0.0001f;
 
-	gpuMemoryManager.ManageStatic(&staticArr1, sSize1);
-	gpuMemoryManager.ManageStatic(&staticArr2, sSize2);
-	gpuMemoryManager.ManageDynamic(&dynamicArr1, dCoef1);
-	gpuMemoryManager.ManageDynamic(&dynamicArr2, dCoef2);
 
-	gpuMemoryManager.Allocate(batches);
-	printf("batches: %zu\n\n", batches);
+	size_t inputWidth = 3;
+	size_t outputWidth = 2;
 
-	/*for (int i = 0; i < sSize1; ++i)
-		staticArr1[i] = i;*/
-	/*for (int i = 0; i < sSize2; ++i)
-		staticArr2[i] = i;*/
-	/*for (int i = 0; i < dCoef1 * batches; ++i)
-		dynamicArr1[i] = i;
-	for (int i = 0; i < dCoef2 * batches; ++i)
-		dynamicArr2[i] = i;*/
+	float* deviceInputTensor;
+	gpuMemoryManager.ManageDynamic(&deviceInputTensor, inputWidth);
 
-	//gpuMemoryManager.PrintMemory();
+	Layer* weightLayer = new WeightLayer(&cublasHandle, &gpuMemoryManager, &gpuRand, &inputHeight, &learningRate, outputWidth);
+	weightLayer->DescribeInputDetails(inputWidth, deviceInputTensor);
+	weightLayer->DescribeTensorDetails();
+	weightLayer->InitializeParameters();
+
+
+	size_t maxInputHeight;
+	gpuMemoryManager.Allocate(maxInputHeight);
+
+
+	FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
+	gpuRand.Rand(deviceInputTensor, inputHeight * inputWidth);
+	weightLayer->Forward();
+	weightLayer->Backward();
+	PrintDeviceTensorf32(inputHeight, inputWidth, deviceInputTensor, "deviceInputTensor");
+	weightLayer->PrintParameters();
+
+
 
 	return 0;
 }
