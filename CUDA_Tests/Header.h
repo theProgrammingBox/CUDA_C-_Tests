@@ -69,16 +69,14 @@ __global__ void gpuRandFunc(float* arr, uint32_t size, uint32_t seed1, uint32_t 
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx < size)
 	{
-		uint32_t index = idx;
+		uint32_t Hash = idx;
 
-		index ^= seed1;
-		index *= 0xBAC57D37;
-		index ^= index >> 16;
-		index ^= seed2;
-		index *= 0x24F66AC9;
-		index ^= index >> 16;
+		Hash ^= seed1;
+		Hash *= 0xBAC57D37;
+		Hash ^= seed2;
+		Hash *= 0x24F66AC9;
 
-		arr[idx] = int32_t(index) * 0.000000000465661287524579f;
+		arr[idx] = int32_t(Hash) * 0.0000000004656612875245796f;
 	}
 }
 
@@ -118,21 +116,10 @@ struct GpuRand
 {
 	uint32_t seed1, seed2;
 
-	void Lehmer32(uint32_t& x)
-	{
-		x *= 0xBAC57D37;
-		x ^= x >> 16;
-		x *= 0x24F66AC9;
-		x ^= x >> 16;
-	}
-
 	GpuRand()
 	{
-		uint32_t seed1 = time(NULL) ^ 0xE621B963;
-		Lehmer32(seed1);
-		Lehmer32(seed1);
-		uint32_t seed2 = seed1 ^ 0x6053653F ^ (time(NULL) >> 32);
-		Lehmer32(seed2);
+		seed1 = time(NULL) ^ 0xE621B963;
+		seed2 = 0x6053653F ^ (time(NULL) >> 32);
 
 		printf("Seed1: %u\n", seed1);
 		printf("Seed2: %u\n\n", seed2);
@@ -140,8 +127,11 @@ struct GpuRand
 
 	void Rand(float* arr, uint32_t size)
 	{
-		Lehmer32(seed1);
-		Lehmer32(seed2);
+		seed1 ^= seed2;
+		seed1 *= 0xBAC57D37;
+		seed2 ^= seed1;
+		seed2 *= 0x24F66AC9;
+
 		gpuRandFunc << <ceil(0.0009765625f * size), 1024 >> > (arr, size, seed1, seed2);
 	}
 };

@@ -1,5 +1,4 @@
-﻿#include <iostream>
-#include "GpuMemoryManager.cuh"
+﻿#include "GpuMemoryManager.cuh"
 
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
@@ -71,7 +70,7 @@ struct WeightLayer : Layer {
 };
 
 int main() {
-	cublasHandle_t cublasHandle;
+	/*cublasHandle_t cublasHandle;
 	GpuMemoryManager gpuMemoryManager;
 	GpuRand gpuRand;
 	size_t inputHeight = 1;
@@ -104,8 +103,19 @@ int main() {
 	weightLayer->Forward();
 	weightLayer->Backward();
 	PrintDeviceTensorf32(inputHeight, inputWidth, deviceInputTensor, "deviceInputTensor");
-	weightLayer->PrintParameters();
+	weightLayer->PrintParameters();*/
 
+	size_t max;
+	size_t n = 8;
+	float* device;
+	GpuMemoryManager gpuMemoryManager;
+	gpuMemoryManager.MapGpuMemory();
+	gpuMemoryManager.ManageStatic(&device, n);
+	gpuMemoryManager.Allocate(max);
+
+	GpuRand gpuRand;
+	gpuRand.Rand(device, n);
+	PrintDeviceTensorf32(1, n, device, "device");
 
 
 	return 0;
