@@ -110,6 +110,7 @@ int main() {
 
 
 	cublasHandle_t cublasHandle;
+	GpuMemoryManager gpuMemoryManager;
 	GpuRand gpuRand;
 	size_t inputHeight, inputWidth, outputWidth;
 	float* deviceInputTensor;
@@ -121,9 +122,13 @@ int main() {
 	inputWidth = 3;
 	outputWidth = 2;
 
-	cudaMalloc(&deviceInputTensor, inputHeight * inputWidth * sizeof(float));
-	cudaMalloc(&deviceWeightTensor, inputWidth * outputWidth * sizeof(float));
-	cudaMalloc(&deviceOutputTensor, inputHeight * outputWidth * sizeof(float));
+	gpuMemoryManager.MapGpuMemory();
+	gpuMemoryManager.ManageDynamic(&deviceInputTensor, inputWidth);
+	gpuMemoryManager.ManageStatic(&deviceWeightTensor, inputWidth * outputWidth);
+	gpuMemoryManager.ManageDynamic(&deviceOutputTensor, outputWidth);
+
+	size_t maxInputHeight;
+	gpuMemoryManager.Allocate(maxInputHeight);
 
 	gpuRand.Rand(deviceInputTensor, inputHeight * inputWidth);
 	gpuRand.Rand(deviceWeightTensor, inputWidth * outputWidth);
