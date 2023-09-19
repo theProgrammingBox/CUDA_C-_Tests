@@ -37,23 +37,25 @@ struct WeightLayer : Layer {
 
 	void DescribeTensorDetails() {
 		gpuMemoryManager->ManageStatic(&deviceWeightTensor, inputWidth * outputWidth);
-		gpuMemoryManager->ManageDynamic(&deviceOutputTensor, inputWidth);
+		gpuMemoryManager->ManageDynamic(&deviceOutputTensor, outputWidth);
 	}
 
 	void InitializeParameters() {
 		gpuRand->Rand(deviceWeightTensor, inputWidth * outputWidth);
+		//gpuRand->Rand(deviceOutputTensor, *inputHeight * outputWidth);
 	}
 
 	void Forward() {
 		float alpha = 1.0f;
 		float beta = 0.0f;
+		printf("inputWidth: %u, outputWidth: %u, inputHeight: %u\n", inputWidth, outputWidth, *inputHeight);
 		FailIf(
 			cublasSgemm(
 				*cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
 				outputWidth, *inputHeight, inputWidth,
 				&alpha,
 				deviceWeightTensor, outputWidth,
-				deviceOutputTensor, inputWidth,
+				deviceInputTensor, inputWidth,
 				&beta,
 				deviceOutputTensor, outputWidth
 			) != CUBLAS_STATUS_SUCCESS, "cublasSgemm failed"
@@ -65,7 +67,7 @@ struct WeightLayer : Layer {
 
 	void PrintParameters() {
 		PrintDeviceTensorf32(inputWidth, outputWidth, deviceWeightTensor, "deviceWeightTensor");
-		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceOutputTensor, "deviceOutputTensor");
+		PrintDeviceTensorf32(*inputHeight, outputWidth, deviceOutputTensor, "deviceOutputTensor");
 	}
 };
 
@@ -73,12 +75,12 @@ int main() {
 	/*cublasHandle_t cublasHandle;
 	GpuMemoryManager gpuMemoryManager;
 	GpuRand gpuRand;
-	size_t inputHeight = 1;
-	float learningRate = 0.0001f;
+	size_t inputHeight;
+	float learningRate;
 
 	FailIf(cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS, "cublasCreate failed");
 	gpuMemoryManager.MapGpuMemory();
-	inputHeight = 1;
+	inputHeight = 16;
 	learningRate = 0.0001f;
 
 
@@ -91,31 +93,58 @@ int main() {
 	Layer* weightLayer = new WeightLayer(&cublasHandle, &gpuMemoryManager, &gpuRand, &inputHeight, &learningRate, outputWidth);
 	weightLayer->DescribeInputDetails(inputWidth, deviceInputTensor);
 	weightLayer->DescribeTensorDetails();
-	weightLayer->InitializeParameters();
 
 
 	size_t maxInputHeight;
 	gpuMemoryManager.Allocate(maxInputHeight);
+	weightLayer->InitializeParameters();
 
 
 	FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
 	gpuRand.Rand(deviceInputTensor, inputHeight * inputWidth);
-	weightLayer->Forward();
-	weightLayer->Backward();
+	//weightLayer->Forward();
+	//weightLayer->Backward();
 	PrintDeviceTensorf32(inputHeight, inputWidth, deviceInputTensor, "deviceInputTensor");
-	weightLayer->PrintParameters();*/
+	weightLayer->PrintParameters();
+	printf("Press any key to exit\n");*/
 
-	size_t max;
-	size_t n = 8;
-	float* device;
-	GpuMemoryManager gpuMemoryManager;
-	gpuMemoryManager.MapGpuMemory();
-	gpuMemoryManager.ManageStatic(&device, n);
-	gpuMemoryManager.Allocate(max);
 
+	cublasHandle_t cublasHandle;
 	GpuRand gpuRand;
-	gpuRand.Rand(device, n);
-	PrintDeviceTensorf32(1, n, device, "device");
+	size_t inputHeight, inputWidth, outputWidth;
+	float* deviceInputTensor;
+	float* deviceWeightTensor;
+	float* deviceOutputTensor;
+
+	cublasCreate(&cublasHandle);
+	inputHeight = 4;
+	inputWidth = 3;
+	outputWidth = 2;
+
+	cudaMalloc(&deviceInputTensor, inputHeight * inputWidth * sizeof(float));
+	cudaMalloc(&deviceWeightTensor, inputWidth * outputWidth * sizeof(float));
+	cudaMalloc(&deviceOutputTensor, inputHeight * outputWidth * sizeof(float));
+
+	gpuRand.Rand(deviceInputTensor, inputHeight * inputWidth);
+	gpuRand.Rand(deviceWeightTensor, inputWidth * outputWidth);
+
+	PrintDeviceTensorf32(inputHeight, inputWidth, deviceInputTensor, "deviceInputTensor");
+	PrintDeviceTensorf32(inputWidth, outputWidth, deviceWeightTensor, "deviceWeightTensor");
+
+	float alpha = 1.0f;
+	float beta = 0.0f;
+
+	cublasSgemm(
+		cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+		outputWidth, inputHeight, inputWidth,
+		&alpha,
+		deviceWeightTensor, outputWidth,
+		deviceInputTensor, inputWidth,
+		&beta,
+		deviceOutputTensor, outputWidth
+	);
+
+	PrintDeviceTensorf32(inputHeight, outputWidth, deviceOutputTensor, "deviceOutputTensor");
 
 
 	return 0;
