@@ -112,6 +112,40 @@ void gpuBinary(float* arr, uint32_t width, uint32_t height, uint32_t majorStride
 	gpuBinaryFunc << <ceil(0.0009765625f * width * height), 1024 >> > (arr, width, height, majorStride);
 }
 
+__global__ void GpuReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride)
+{
+	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < width * height)
+	{
+		uint32_t wx = idx % width;
+		uint32_t hx = idx / width;
+		uint32_t index = hx * majorStride + wx;
+		arr[index] = arr[index] > 0.0f ? arr[index] : 0.0f;
+	}
+}
+
+void ReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride)
+{
+	GpuReluForward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, width, height, majorStride);
+}
+
+__global__ void GpuReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride)
+{
+	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < width * height)
+	{
+		uint32_t wx = idx % width;
+		uint32_t hx = idx / width;
+		uint32_t index = hx * majorStride + wx;
+		output[index] = arr[index] > 0.0f ? output[index] : 0.0f;
+	}
+}
+
+void ReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride)
+{
+	GpuReluBackward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, output, width, height, majorStride);
+}
+
 struct GpuRand
 {
 	uint32_t seed1, seed2;
