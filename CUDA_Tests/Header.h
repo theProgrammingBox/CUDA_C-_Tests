@@ -95,6 +95,18 @@ void gpuAdd(float* arr, float* output, uint32_t width, uint32_t height)
 	gpuAddFunc << <ceil(0.0009765625f * width), 1024 >> > (arr, output, width, height);
 }
 
+__global__ void gpuSubFunc(float* output, float* arr, uint32_t size)
+{
+	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < size)
+		output[idx] -= arr[idx];
+}
+
+void gpuSub(float* arr, float* output, uint32_t size)
+{
+	gpuSubFunc << <ceil(0.0009765625f * size), 1024 >> > (output, arr, size);
+}
+
 __global__ void gpuBinaryFunc(float* arr, uint32_t width, uint32_t height, uint32_t majorStride)
 {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -126,7 +138,7 @@ __global__ void GpuReluForward(float* arr, uint32_t height, uint32_t width, uint
 
 void ReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride)
 {
-	GpuReluForward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, width, height, majorStride);
+	GpuReluForward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, height, width, majorStride);
 }
 
 __global__ void GpuReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride)
@@ -143,7 +155,7 @@ __global__ void GpuReluBackward(float* arr, float* output, uint32_t height, uint
 
 void ReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride)
 {
-	GpuReluBackward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, output, width, height, majorStride);
+	GpuReluBackward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, output, height, width, majorStride);
 }
 
 struct GpuRand

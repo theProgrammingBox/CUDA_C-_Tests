@@ -11,8 +11,13 @@ struct Layer {
 	float* deviceForwardInputTensor;
 	float* deviceBackwardOutputTensor;
 
-	Layer(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate) :
-		cublasHandle(cublasHandle), gpuMemoryManager(gpuMemoryManager), gpuRand(gpuRand), inputHeight(inputHeight), learningRate(learningRate) {}
+	void Initialize(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate) {
+		this->cublasHandle = cublasHandle;
+		this->gpuMemoryManager = gpuMemoryManager;
+		this->gpuRand = gpuRand;
+		this->inputHeight = inputHeight;
+		this->learningRate = learningRate;
+	}
 
 	virtual size_t GetOutputDim() = 0;
 	void AssignInputDim(size_t inputWidth) {
@@ -41,8 +46,7 @@ struct WeightLayer : Layer {
 	float* deviceBackwardWeightTensor;
 	float* deviceBackwardInputTensor;
 
-	WeightLayer(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate, size_t outputWidth) :
-		Layer(cublasHandle, gpuMemoryManager, gpuRand, inputHeight, learningRate), outputWidth(outputWidth) {}
+	WeightLayer(size_t outputWidth) : outputWidth(outputWidth) {}
 
 	size_t GetOutputDim() { return outputWidth; }
 
@@ -118,8 +122,7 @@ struct WeightLayer : Layer {
 };
 
 struct ReluLayer : Layer {
-	ReluLayer(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate) :
-		Layer(cublasHandle, gpuMemoryManager, gpuRand, inputHeight, learningRate) {}
+	ReluLayer() {}
 
 	size_t GetOutputDim() { return inputWidth; }
 
@@ -147,70 +150,99 @@ struct ReluLayer : Layer {
 	void PrintBackward() {
 		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardOutputTensor, "relu - deviceBackwardInputTensor");
 	}
-
 };
 
-int main() {
+struct NeuralNetweork {
 	cublasHandle_t cublasHandle;
 	GpuMemoryManager gpuMemoryManager;
 	GpuRand gpuRand;
 	size_t inputHeight;
 	float learningRate;
 
-	FailIf(cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS, "cublasCreate failed");
-	gpuMemoryManager.MapGpuMemory();
-	inputHeight = 4;
-	learningRate = 0.0001f;
+	std::vector<Layer*> layers;
 
-
-	size_t inputWidth = 3;
-	size_t outputWidth = 2;
-
+	size_t inputWidth;
+	size_t outputWidth;
 	float* deviceForwardInputTensor;
 	float* deviceBackwardOutputTensor;
-	gpuMemoryManager.ManageDynamic(&deviceForwardInputTensor, inputWidth);
-	gpuMemoryManager.ManageDynamic(&deviceBackwardOutputTensor, outputWidth);
-
-	Layer* weightLayer = new WeightLayer(&cublasHandle, &gpuMemoryManager, &gpuRand, &inputHeight, &learningRate, outputWidth);
-	weightLayer->AssignInputDim(inputWidth);
-	weightLayer->DescribeTensorDetails();
-
-	Layer* reluLayer = new ReluLayer(&cublasHandle, &gpuMemoryManager, &gpuRand, &inputHeight, &learningRate);
-	reluLayer->AssignInputDim(weightLayer->GetOutputDim());
-	reluLayer->DescribeTensorDetails();
-
 
 	size_t maxInputHeight;
-	gpuMemoryManager.Allocate(maxInputHeight);
 
-	weightLayer->InitializeParameters();
-	reluLayer->InitializeParameters();
+	NeuralNetweork(size_t inputWidth, size_t outputWidth) :
+		inputWidth(inputWidth), outputWidth(outputWidth) {
+		FailIf(cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS, "cublasCreate failed");
+		gpuMemoryManager.MapGpuMemory();
+		inputHeight = 4;
+		learningRate = 0.0001f;
 
-	weightLayer->AssignForwardInputTensor(deviceForwardInputTensor);
-	reluLayer->AssignForwardInputTensor(weightLayer->GetForwardOutputTensor());
+		gpuMemoryManager.ManageDynamic(&deviceForwardInputTensor, inputWidth);
+		gpuMemoryManager.ManageDynamic(&deviceBackwardOutputTensor, outputWidth);
+	}
 
-	reluLayer->AssignBackwardOutputTensor(deviceBackwardOutputTensor);
-	weightLayer->AssignBackwardOutputTensor(reluLayer->GetBackwardInputTensor());
+	void AddLayer(Layer* layer) {
+		layer->Initialize(&cublasHandle, &gpuMemoryManager, &gpuRand, &inputHeight, &learningRate);
+		if (layers.size() > 0) {
+			layer->AssignInputDim(layers.back()->GetOutputDim());
+			layer->DescribeTensorDetails();
+		} else {
+			layer->AssignInputDim(inputWidth);
+			layer->DescribeTensorDetails();
+		}
+		layers.emplace_back(layer);
+	}
 
+	void Finalize() {
+		gpuMemoryManager.Allocate(maxInputHeight);
 
-	FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
-	gpuRand.Rand(deviceForwardInputTensor, inputHeight * inputWidth);
-	gpuRand.Rand(deviceBackwardOutputTensor, outputWidth * inputHeight);
+		for (auto layer : layers) { layer->InitializeParameters(); }
 
+		layers.front()->AssignForwardInputTensor(deviceForwardInputTensor);
+		for (size_t i = 1; i < layers.size(); i++) { layers[i]->AssignForwardInputTensor(layers[i - 1]->GetForwardOutputTensor()); }
 
-	PrintDeviceTensorf32(inputHeight, inputWidth, deviceForwardInputTensor, "input - deviceForwardInputTensor");
-	weightLayer->Forward();
-	weightLayer->PrintForward();
-	reluLayer->Forward();
-	reluLayer->PrintForward();
-	printf("\n");
+		layers.back()->AssignBackwardOutputTensor(deviceBackwardOutputTensor);
+		for (size_t i = layers.size() - 1; i--;) { layers[i]->AssignBackwardOutputTensor(layers[i + 1]->GetBackwardInputTensor()); }
+	}
 
-	PrintDeviceTensorf32(inputHeight, outputWidth, deviceBackwardOutputTensor, "input - deviceBackwardOutputTensor");
-	reluLayer->Backward();
-	reluLayer->PrintBackward();
-	weightLayer->Backward();
-	weightLayer->PrintBackward();
-	printf("\n");
+	void Forward() {
+		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
+		gpuRand.Rand(deviceForwardInputTensor, inputHeight * inputWidth);
+
+		PrintDeviceTensorf32(inputHeight, inputWidth, deviceForwardInputTensor, "input - deviceForwardInputTensor");
+		for (auto layer : layers) {
+			layer->Forward();
+			layer->PrintForward();
+		}
+		printf("\n");
+	}
+
+	void Backward() {
+		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
+		//gpuRand.Rand(deviceBackwardOutputTensor, outputWidth * inputHeight);
+		cudaMemcpy(deviceBackwardOutputTensor, deviceForwardInputTensor, inputHeight * inputWidth * sizeof(float), cudaMemcpyDeviceToDevice);
+		gpuSub(layers.back()->GetForwardOutputTensor(), deviceBackwardOutputTensor, outputWidth * inputHeight);
+
+		PrintDeviceTensorf32(inputHeight, outputWidth, deviceBackwardOutputTensor, "output - deviceBackwardOutputTensor");
+		for (auto layer : layers) {
+			layer->Backward();
+			layer->PrintBackward();
+		}
+		printf("\n");
+	}
+};
+
+int main() {
+	size_t inputWidth = 3;
+	size_t outputWidth = 3;
+
+	NeuralNetweork neuralNetweork(inputWidth, outputWidth);
+	neuralNetweork.AddLayer(new WeightLayer(outputWidth));
+	neuralNetweork.AddLayer(new ReluLayer());
+	neuralNetweork.Finalize();
+
+	for (size_t i = 0; i < 1; i++) {
+		neuralNetweork.Forward();
+		neuralNetweork.Backward();
+	}
 
 
 	printf("Press any key to exit\n");
