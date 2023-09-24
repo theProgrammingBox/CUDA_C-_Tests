@@ -98,6 +98,39 @@ void ReluBackward(float* arr, float* output, uint32_t height, uint32_t width, ui
 	GpuReluBackward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, output, height, width, majorStride);
 }
 
+__global__ void GPUBatchAddForward(float* arr, float* output, uint32_t height, uint32_t width)
+{
+	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < width)
+	{
+		for (uint32_t i = 0; i < height; i++)
+			output[i * width + idx] += arr[idx];
+	}
+}
+
+void BatchAddForward(float* arr, float* output, uint32_t height, uint32_t width)
+{
+	GPUBatchAddForward << <ceil(0.0009765625f * width), 1024 >> > (arr, output, height, width);
+}
+
+__global__ void GPUBatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width)
+{
+	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < width)
+	{
+		float alpha = 1.0f / sqrtf(height);
+		float sum = 0.0f;
+		for (uint32_t i = 0; i < height; i++)
+			sum += output[i * width + idx];
+		arr[idx] = sum * alpha;
+	}
+}
+
+void BatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width)
+{
+	GPUBatchAddBackward << <ceil(0.0009765625f * width), 1024 >> > (arr, output, height, width);
+}
+
 __global__ void gpuRandFunc(float* arr, uint32_t size, uint32_t seed1, uint32_t seed2)
 {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;

@@ -2,9 +2,9 @@
 
 /*
 TODO:
-- Test normilization per layer (weight specifically)
-- Add bias
 - Add Adam
+- Test normilization per layer (weight specifically)
+-- in the simple case of outputing the input, no normilization is faster
 */
 
 struct Layer {
@@ -74,7 +74,8 @@ struct WeightLayer : Layer {
 	}
 
 	void Forward() {
-		float alpha = 1.0f;
+		float alpha = 1.0f / sqrtf(inputWidth);
+		//float alpha = 1.0f;
 		float beta = 0.0f;
 
 		FailIf(
@@ -91,7 +92,8 @@ struct WeightLayer : Layer {
 	}
 
 	void Backward() {
-		float alpha = 1.0f;
+		float alpha = 1.0f / sqrtf(*inputHeight);
+		//float alpha = 1.0f;
 		float beta = 0.0f;
 
 		FailIf(
@@ -106,6 +108,7 @@ struct WeightLayer : Layer {
 			) != CUBLAS_STATUS_SUCCESS, "cublasSgemm failed"
 		);
 
+		alpha = 1.0f / sqrtf(outputWidth);
 		FailIf(
 			cublasSgemm(
 				*cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
@@ -126,22 +129,72 @@ struct WeightLayer : Layer {
 				learningRate,
 				deviceBackwardWeightTensor, 1,
 				deviceForwardWeightTensor, 1
-			) != CUBLAS_STATUS_SUCCESS, "cublasSacpy failed"
+			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
 		);
 	}
 
 	void PrintForward() {
-		PrintDeviceTensorf32(inputWidth, outputWidth, deviceForwardWeightTensor, "weight - deviceForwardWeightTensor");
 		PrintDeviceTensorf32(*inputHeight, outputWidth, deviceForwardOutputTensor, "weight - deviceForwardOutputTensor");
 	}
 
 	void PrintBackward() {
-		PrintDeviceTensorf32(inputWidth, outputWidth, deviceBackwardWeightTensor, "weight - deviceBackwardWeightTensor");
 		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardInputTensor, "weight - deviceBackwardInputTensor");
 	}
 
 	void PrintParameters() {
 		PrintDeviceTensorf32(inputWidth, outputWidth, deviceForwardWeightTensor, "weight - deviceForwardWeightTensor");
+	}
+};
+
+struct BiasLayer : Layer {
+	float* deviceForwardBiasTensor;
+	float* deviceBackwardBiasTensor;
+
+	BiasLayer() {}
+
+	size_t GetOutputDim() { return inputWidth; }
+
+	void DescribeTensorDetails() {
+		gpuMemoryManager->ManageStatic(&deviceForwardBiasTensor, inputWidth);
+		gpuMemoryManager->ManageStatic(&deviceBackwardBiasTensor, inputWidth);
+	}
+
+	float* GetForwardOutputTensor() { return deviceForwardInputTensor; }
+	float* GetBackwardInputTensor() { return deviceBackwardOutputTensor; }
+
+	void InitializeParameters() {
+		gpuRand->Rand(deviceForwardBiasTensor, inputWidth);
+	}
+
+	void Forward() {
+		BatchAddForward(deviceForwardBiasTensor, deviceForwardInputTensor, *inputHeight, inputWidth);
+	}
+
+	void Backward() {
+		BatchAddBackward(deviceBackwardBiasTensor, deviceBackwardOutputTensor, *inputHeight, inputWidth);
+	}
+
+	void UpdateParameters() {
+		FailIf(
+			cublasSaxpy(
+				*cublasHandle, inputWidth,
+				learningRate,
+				deviceBackwardBiasTensor, 1,
+				deviceForwardBiasTensor, 1
+			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
+		);
+	}
+
+	void PrintForward() {
+		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceForwardInputTensor, "bias - deviceForwardOutputTensor");
+	}
+
+	void PrintBackward() {
+		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardOutputTensor, "bias - deviceBackwardInputTensor");
+	}
+
+	void PrintParameters() {
+		PrintDeviceTensorf32(1, inputWidth, deviceForwardBiasTensor, "bias - deviceForwardBiasTensor");
 	}
 };
 
@@ -290,9 +343,10 @@ int main() {
 
 	NeuralNetwork neuralNetwork(inputWidth, outputWidth);
 	neuralNetwork.inputHeight = 16;
-	neuralNetwork.learningRate = 0.04f;
+	neuralNetwork.learningRate = 0.01f;
 
 	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
+	neuralNetwork.AddLayer(new BiasLayer());
 	neuralNetwork.AddLayer(new ReluLayer());
 	neuralNetwork.AddLayer(new WeightLayer(outputWidth));
 	neuralNetwork.Finalize();
