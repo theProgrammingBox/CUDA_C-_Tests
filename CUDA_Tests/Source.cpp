@@ -1,5 +1,12 @@
 ﻿#include "GpuMemoryManager.cuh"
 
+/*
+TODO:
+- Test normilization per layer (weight specifically)
+- Add bias
+- Add Adam
+*/
+
 struct Layer {
 	cublasHandle_t* cublasHandle;
 	GpuMemoryManager* gpuMemoryManager;
@@ -35,9 +42,10 @@ struct Layer {
 	virtual void InitializeParameters() = 0;
 	virtual void Forward() = 0;
 	virtual void Backward() = 0;
+	virtual void UpdateParameters() = 0;
 	virtual void PrintForward() = 0;
 	virtual void PrintBackward() = 0;
-	virtual void UpdateParameters() = 0;
+	virtual void PrintParameters() = 0;
 };
 
 struct WeightLayer : Layer {
@@ -111,6 +119,17 @@ struct WeightLayer : Layer {
 		);
 	}
 
+	void UpdateParameters() {
+		FailIf(
+			cublasSaxpy(
+				*cublasHandle, inputWidth * outputWidth,
+				learningRate,
+				deviceBackwardWeightTensor, 1,
+				deviceForwardWeightTensor, 1
+			) != CUBLAS_STATUS_SUCCESS, "cublasSacpy failed"
+		);
+	}
+
 	void PrintForward() {
 		PrintDeviceTensorf32(inputWidth, outputWidth, deviceForwardWeightTensor, "weight - deviceForwardWeightTensor");
 		PrintDeviceTensorf32(*inputHeight, outputWidth, deviceForwardOutputTensor, "weight - deviceForwardOutputTensor");
@@ -121,15 +140,8 @@ struct WeightLayer : Layer {
 		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardInputTensor, "weight - deviceBackwardInputTensor");
 	}
 
-	void UpdateParameters() {
-		FailIf(
-			cublasSaxpy(
-				*cublasHandle, inputWidth * outputWidth,
-				learningRate,
-				deviceBackwardWeightTensor, 1,
-				deviceForwardWeightTensor, 1
-			) != CUBLAS_STATUS_SUCCESS, "cublasSacpy failed"
-		);
+	void PrintParameters() {
+		PrintDeviceTensorf32(inputWidth, outputWidth, deviceForwardWeightTensor, "weight - deviceForwardWeightTensor");
 	}
 };
 
@@ -155,6 +167,9 @@ struct ReluLayer : Layer {
 		ReluBackward(deviceForwardInputTensor, deviceBackwardOutputTensor, *inputHeight, inputWidth, inputWidth);
 	}
 
+	void UpdateParameters() {
+	}
+
 	void PrintForward() {
 		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceForwardInputTensor, "relu - deviceForwardOutputTensor");
 	}
@@ -163,7 +178,7 @@ struct ReluLayer : Layer {
 		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardOutputTensor, "relu - deviceBackwardInputTensor");
 	}
 
-	void UpdateParameters() {
+	void PrintParameters() {
 	}
 };
 
@@ -262,6 +277,10 @@ struct NeuralNetwork {
 		error /= outputWidth * inputHeight;
 		printf("error: %f\n", error);
 	}
+
+	void PrintParameters() {
+		for (auto layer : layers) { layer->PrintParameters(); }
+	}
 };
 
 int main() {
@@ -271,7 +290,7 @@ int main() {
 
 	NeuralNetwork neuralNetwork(inputWidth, outputWidth);
 	neuralNetwork.inputHeight = 16;
-	neuralNetwork.learningRate = 0.01f;
+	neuralNetwork.learningRate = 0.04f;
 
 	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
 	neuralNetwork.AddLayer(new ReluLayer());
@@ -282,8 +301,11 @@ int main() {
 		neuralNetwork.Forward();
 		neuralNetwork.Backward();
 		neuralNetwork.UpdateParameters();
-		neuralNetwork.PrintError();
+		if (i % 100 == 0) neuralNetwork.PrintError();
 	}
+	printf("\n");
+
+	neuralNetwork.PrintParameters();
 
 	printf("Press any key to exit\n");
 
