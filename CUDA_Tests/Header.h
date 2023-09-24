@@ -64,66 +64,6 @@ void PrintDeviceTensorf32(size_t height, size_t width, float* arr, const char* l
 	free(hostArr);
 }
 
-__global__ void gpuRandFunc(float* arr, uint32_t size, uint32_t seed1, uint32_t seed2)
-{
-	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < size)
-	{
-		uint32_t Hash = idx;
-
-		Hash ^= seed1;
-		Hash *= 0xBAC57D37;
-		Hash ^= seed2;
-		Hash *= 0x24F66AC9;
-
-		arr[idx] = int32_t(Hash) * 0.0000000004656612875245796f;
-	}
-}
-
-__global__ void gpuAddFunc(float* arr, float* output, uint32_t width, uint32_t height)
-{
-	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < width)
-	{
-		for (uint32_t i = 0; i < height; i++)
-			output[i * width + idx] += arr[idx];
-	}
-}
-
-void gpuAdd(float* arr, float* output, uint32_t width, uint32_t height)
-{
-	gpuAddFunc << <ceil(0.0009765625f * width), 1024 >> > (arr, output, width, height);
-}
-
-__global__ void gpuSubFunc(float* output, float* arr, uint32_t size)
-{
-	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < size)
-		output[idx] -= arr[idx];
-}
-
-void gpuSub(float* arr, float* output, uint32_t size)
-{
-	gpuSubFunc << <ceil(0.0009765625f * size), 1024 >> > (output, arr, size);
-}
-
-__global__ void gpuBinaryFunc(float* arr, uint32_t width, uint32_t height, uint32_t majorStride)
-{
-	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < width* height)
-	{
-		uint32_t wx = idx % width;
-		uint32_t hx = idx / width;
-		uint32_t index = hx * majorStride + wx;
-		arr[index] = arr[index] > 0.0f ? 1.0f : 0.0f;
-	}
-}
-
-void gpuBinary(float* arr, uint32_t width, uint32_t height, uint32_t majorStride)
-{
-	gpuBinaryFunc << <ceil(0.0009765625f * width * height), 1024 >> > (arr, width, height, majorStride);
-}
-
 __global__ void GpuReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride)
 {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -156,6 +96,22 @@ __global__ void GpuReluBackward(float* arr, float* output, uint32_t height, uint
 void ReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride)
 {
 	GpuReluBackward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, output, height, width, majorStride);
+}
+
+__global__ void gpuRandFunc(float* arr, uint32_t size, uint32_t seed1, uint32_t seed2)
+{
+	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < size)
+	{
+		uint32_t Hash = idx;
+
+		Hash ^= seed1;
+		Hash *= 0xBAC57D37;
+		Hash ^= seed2;
+		Hash *= 0x24F66AC9;
+
+		arr[idx] = int32_t(Hash) * 0.0000000004656612875245796f;
+	}
 }
 
 struct GpuRand

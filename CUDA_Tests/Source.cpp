@@ -37,6 +37,7 @@ struct Layer {
 	virtual void Backward() = 0;
 	virtual void PrintForward() = 0;
 	virtual void PrintBackward() = 0;
+	virtual void UpdateParameters() = 0;
 };
 
 struct WeightLayer : Layer {
@@ -119,6 +120,17 @@ struct WeightLayer : Layer {
 		PrintDeviceTensorf32(inputWidth, outputWidth, deviceBackwardWeightTensor, "weight - deviceBackwardWeightTensor");
 		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardInputTensor, "weight - deviceBackwardInputTensor");
 	}
+
+	void UpdateParameters() {
+		FailIf(
+			cublasSaxpy(
+				*cublasHandle, inputWidth * outputWidth,
+				learningRate,
+				deviceBackwardWeightTensor, 1,
+				deviceForwardWeightTensor, 1
+			) != CUBLAS_STATUS_SUCCESS, "cublasSacpy failed"
+		);
+	}
 };
 
 struct ReluLayer : Layer {
@@ -150,9 +162,12 @@ struct ReluLayer : Layer {
 	void PrintBackward() {
 		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardOutputTensor, "relu - deviceBackwardInputTensor");
 	}
+
+	void UpdateParameters() {
+	}
 };
 
-struct NeuralNetweork {
+struct NeuralNetwork {
 	cublasHandle_t cublasHandle;
 	GpuMemoryManager gpuMemoryManager;
 	GpuRand gpuRand;
@@ -168,7 +183,7 @@ struct NeuralNetweork {
 
 	size_t maxInputHeight;
 
-	NeuralNetweork(size_t inputWidth, size_t outputWidth) :
+	NeuralNetwork(size_t inputWidth, size_t outputWidth) :
 		inputWidth(inputWidth), outputWidth(outputWidth) {
 		FailIf(cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS, "cublasCreate failed");
 		gpuMemoryManager.MapGpuMemory();
@@ -177,6 +192,11 @@ struct NeuralNetweork {
 
 		gpuMemoryManager.ManageDynamic(&deviceForwardInputTensor, inputWidth);
 		gpuMemoryManager.ManageDynamic(&deviceBackwardOutputTensor, outputWidth);
+	}
+
+	~NeuralNetwork() {
+		for (auto layer : layers) { delete layer; }
+		cublasDestroy(cublasHandle);
 	}
 
 	void AddLayer(Layer* layer) {
@@ -207,43 +227,63 @@ struct NeuralNetweork {
 		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
 		gpuRand.Rand(deviceForwardInputTensor, inputHeight * inputWidth);
 
-		PrintDeviceTensorf32(inputHeight, inputWidth, deviceForwardInputTensor, "input - deviceForwardInputTensor");
-		for (auto layer : layers) {
-			layer->Forward();
-			layer->PrintForward();
-		}
-		printf("\n");
+		for (size_t i = 0; i < layers.size(); i++) { layers[i]->Forward(); }
 	}
 
 	void Backward() {
 		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
-		//gpuRand.Rand(deviceBackwardOutputTensor, outputWidth * inputHeight);
 		cudaMemcpy(deviceBackwardOutputTensor, deviceForwardInputTensor, inputHeight * inputWidth * sizeof(float), cudaMemcpyDeviceToDevice);
-		gpuSub(layers.back()->GetForwardOutputTensor(), deviceBackwardOutputTensor, outputWidth * inputHeight);
+		float alpha = -1.0f;
+		FailIf(
+			cublasSaxpy(
+				cublasHandle, outputWidth * inputHeight,
+				&alpha,
+				layers.back()->GetForwardOutputTensor(), 1,
+				deviceBackwardOutputTensor, 1
+			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
+		);
 
-		PrintDeviceTensorf32(inputHeight, outputWidth, deviceBackwardOutputTensor, "output - deviceBackwardOutputTensor");
-		for (auto layer : layers) {
-			layer->Backward();
-			layer->PrintBackward();
-		}
-		printf("\n");
+		for (size_t i = layers.size(); i--;) { layers[i]->Backward(); }
+	}
+
+	void UpdateParameters() {
+		for (auto layer : layers) { layer->UpdateParameters(); }
+	}
+
+	void PrintError() {
+		float error = 0.0f;
+		FailIf(
+			cublasSasum(
+				cublasHandle, outputWidth * inputHeight,
+				deviceBackwardOutputTensor, 1,
+				&error
+			) != CUBLAS_STATUS_SUCCESS, "cublasSasum failed"
+		);
+		error /= outputWidth * inputHeight;
+		printf("error: %f\n", error);
 	}
 };
 
 int main() {
 	size_t inputWidth = 3;
+	size_t hiddenWidth = 6;
 	size_t outputWidth = 3;
 
-	NeuralNetweork neuralNetweork(inputWidth, outputWidth);
-	neuralNetweork.AddLayer(new WeightLayer(outputWidth));
-	neuralNetweork.AddLayer(new ReluLayer());
-	neuralNetweork.Finalize();
+	NeuralNetwork neuralNetwork(inputWidth, outputWidth);
+	neuralNetwork.inputHeight = 16;
+	neuralNetwork.learningRate = 0.01f;
 
-	for (size_t i = 0; i < 1; i++) {
-		neuralNetweork.Forward();
-		neuralNetweork.Backward();
+	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
+	neuralNetwork.AddLayer(new ReluLayer());
+	neuralNetwork.AddLayer(new WeightLayer(outputWidth));
+	neuralNetwork.Finalize();
+
+	for (size_t i = 0; i < 1000; i++) {
+		neuralNetwork.Forward();
+		neuralNetwork.Backward();
+		neuralNetwork.UpdateParameters();
+		neuralNetwork.PrintError();
 	}
-
 
 	printf("Press any key to exit\n");
 
