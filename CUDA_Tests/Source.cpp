@@ -280,6 +280,8 @@ struct NeuralNetwork {
 	}
 
 	void Finalize() {
+		FailIf(layers.back()->GetOutputDim() != outputWidth, "layers.back()->GetOutputDim() != outputWidth");
+
 		gpuMemoryManager.Allocate(maxInputHeight);
 
 		for (auto layer : layers) { layer->InitializeParameters(); }
