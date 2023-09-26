@@ -2,6 +2,9 @@
 
 /*
 TODO:
+- optimize the memory manager, maybe use a linked list instead of a vector
+-- i don't think it is working properly
+-- maybe get rid of it completly and just iterativly increase the size of the tensors until it fails
 - Test addition
 - Export history of parameter details, maybe the layer tensor values as well in case it can give some insight
 - test out invsqrt
@@ -577,7 +580,7 @@ int main() {
 	bool debug = true;
 
 	size_t inputWidth = 16;
-	size_t hiddenWidth = 16;
+	size_t hiddenWidth = 32;
 	size_t outputWidth = 8;
 
 	NeuralNetwork neuralNetwork(inputWidth, outputWidth);
@@ -587,13 +590,20 @@ int main() {
 	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
 	neuralNetwork.AddLayer(new BiasLayer());
 	neuralNetwork.AddLayer(new ReluLayer());
+	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
+	neuralNetwork.AddLayer(new BiasLayer());
+	neuralNetwork.AddLayer(new ReluLayer());
 	neuralNetwork.AddLayer(new WeightLayer(outputWidth));
 	neuralNetwork.Finalize();
+
+	printf("test1\n");
 
 	float* hostInputTensor = new float[inputWidth * neuralNetwork.maxInputHeight];
 	float* hostOutputTensor = new float[outputWidth * neuralNetwork.maxInputHeight];
 
-	for (size_t i = 0; i < 40000; i++) {
+	printf("test2\n");
+
+	for (size_t i = 0; i < 100000; i++) {
 		for (size_t batch = 0; batch < neuralNetwork.inputHeight; batch++) {
 			uint8_t a = rand();
 			uint8_t b = rand();
