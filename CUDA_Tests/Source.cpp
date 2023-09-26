@@ -2,8 +2,15 @@
 
 /*
 TODO:
-- Add Adam
--- memset to 0 with correction to "unbias" the first few iterations
+- Test addition
+-- add debug forward and backward
+*/
+
+/*
+LESSONS:
+- adam no normilization just seems hands down a lot better than sgd no normilization
+- Lower learning rate means slower convergence, but more accurate results
+-- Ill describe it like higher learning potential, but takes longer to learn
 - Test normilization per layer (weight specifically)
 -- in the simple case of outputing the input, no normilization is faster
 -- with adam, unnormilized seems to be faster
@@ -147,6 +154,14 @@ struct WeightLayer : Layer {
 			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
 			*learningRate, inputWidth * outputWidth
 		);
+		/*FailIf(
+			cublasSaxpy(
+				*cublasHandle, inputWidth * outputWidth,
+				learningRate,
+				deviceBackwardWeightTensor, 1,
+				deviceForwardWeightTensor, 1
+			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
+		);*/
 	}
 
 	void PrintForward() {
@@ -203,6 +218,14 @@ struct BiasLayer : Layer {
 			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
 			*learningRate, inputWidth
 		);
+		/*FailIf(
+			cublasSaxpy(
+				*cublasHandle, inputWidth,
+				learningRate,
+				deviceBackwardBiasTensor, 1,
+				deviceForwardBiasTensor, 1
+			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
+		);*/
 	}
 
 	void PrintForward() {
@@ -329,14 +352,11 @@ struct NeuralNetwork {
 
 	void Forward() {
 		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
-		gpuRand.Rand(deviceForwardInputTensor, inputHeight * inputWidth);
-
 		for (size_t i = 0; i < layers.size(); i++) { layers[i]->Forward(); }
 	}
 
 	void Backward() {
 		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
-		cudaMemcpy(deviceBackwardOutputTensor, deviceForwardInputTensor, inputHeight * inputWidth * sizeof(float), cudaMemcpyDeviceToDevice);
 		float alpha = -1.0f;
 		FailIf(
 			cublasSaxpy(
@@ -375,13 +395,15 @@ struct NeuralNetwork {
 };
 
 int main() {
-	size_t inputWidth = 3;
-	size_t hiddenWidth = 6;
-	size_t outputWidth = 3;
+	srand(time(NULL));
+
+	size_t inputWidth = 16;
+	size_t hiddenWidth = 16;
+	size_t outputWidth = 8;
 
 	NeuralNetwork neuralNetwork(inputWidth, outputWidth);
 	neuralNetwork.inputHeight = 16;
-	neuralNetwork.learningRate = 0.01f;
+	neuralNetwork.learningRate = 0.0001f;
 
 	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
 	neuralNetwork.AddLayer(new BiasLayer());
@@ -389,7 +411,27 @@ int main() {
 	neuralNetwork.AddLayer(new WeightLayer(outputWidth));
 	neuralNetwork.Finalize();
 
-	for (size_t i = 0; i < 1000; i++) {
+	float* hostInputTensor = new float[inputWidth];
+	float* hostOutputTensor = new float[outputWidth];
+
+	for (size_t i = 0; i < 40000; i++) {
+		uint8_t a = rand();
+		uint8_t b = rand();
+		uint8_t c = a + b;
+
+		// the input is the binary representation of a and b while the output is the binary representation of c
+		for (size_t j = 0; j < 8; j++) {
+			hostInputTensor[j] = (a >> j) & 1;
+			hostInputTensor[j + 8] = (b >> j) & 1;
+			hostOutputTensor[j] = (c >> j) & 1;
+		}
+
+		cudaMemcpy(neuralNetwork.deviceForwardInputTensor, hostInputTensor, inputWidth * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(neuralNetwork.deviceBackwardOutputTensor, hostOutputTensor, outputWidth * sizeof(float), cudaMemcpyHostToDevice);
+
+		//neuralNetwork.gpuRand.Rand(neuralNetwork.deviceForwardInputTensor, neuralNetwork.inputHeight * neuralNetwork.inputWidth);
+		//cudaMemcpy(neuralNetwork.deviceBackwardOutputTensor, neuralNetwork.deviceForwardInputTensor, neuralNetwork.inputHeight * neuralNetwork.inputWidth * sizeof(float), cudaMemcpyDeviceToDevice);
+		
 		neuralNetwork.Forward();
 		neuralNetwork.Backward();
 		neuralNetwork.UpdateParameters();
@@ -401,6 +443,8 @@ int main() {
 
 	printf("Press any key to exit\n");
 
+	delete[] hostInputTensor;
+	delete[] hostOutputTensor;
 
 	return 0;
 }
