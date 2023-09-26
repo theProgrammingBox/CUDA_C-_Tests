@@ -4,6 +4,8 @@
 TODO:
 - Test addition
 -- add debug forward and backward
+- Print update parameters
+-- store adam in gradient
 */
 
 /*
@@ -313,14 +315,15 @@ struct BiasLayer : Layer {
 
 		BatchAddBackward(deviceBackwardBiasTensor, deviceBackwardOutputTensor, *inputHeight, inputWidth);
 
-		PrintDeviceTensorf32(false, 1, inputWidth, deviceForwardBiasTensor, "Bias Gradient");
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceBackwardBiasTensor, "Bias Gradient");
 		printf("--------------------\n\n");
 	}
 
 	void PrintParameters() {
 		printf("Bias Parameter Print\n");
 
-		PrintDeviceTensorf32(false, 1, inputWidth, deviceForwardBiasTensor, "Bias");
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceForwardBiasTensor, "Bias");\
+		printf("--------------------\n\n");
 	}
 };
 
