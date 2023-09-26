@@ -136,7 +136,9 @@ __global__ void GPUAdamUpdate(float* gradMean, float* gradVar, float* grad, floa
 		float varCorr = var / (1.0f - varCor);
 		gradMean[idx] = mean;
 		gradVar[idx] = var;
-		param[idx] += learningRate * meanCorr / (sqrtf(varCorr) + epsilon);
+		gradient = meanCorr / (sqrtf(varCorr) + epsilon);
+		grad[idx] = gradient;
+		param[idx] += learningRate * gradient;
 	}
 }
 

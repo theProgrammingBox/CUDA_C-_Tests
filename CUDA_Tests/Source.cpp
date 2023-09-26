@@ -3,9 +3,7 @@
 /*
 TODO:
 - Test addition
--- add debug forward and backward
-- Print update parameters
--- store adam in gradient
+- Export history of parameter details, maybe the layer tensor values as well in case it can give some insight
 */
 
 /*
@@ -66,6 +64,7 @@ struct Layer {
 	virtual void UpdateParameters() = 0;
 	virtual void PrintForward() = 0;
 	virtual void PrintBackward() = 0;
+	virtual void PrintUpdateParameters() = 0;
 	virtual void PrintParameters() = 0;
 };
 
@@ -75,8 +74,8 @@ struct WeightLayer : Layer {
 	float* deviceForwardOutputTensor;
 	float* deviceBackwardWeightTensor;
 	float* deviceBackwardInputTensor;
-	float* deviceWeightMean;
-	float* deviceWeightVar;
+	float* deviceWeightBackwardMean;
+	float* deviceWeightBackwardVar;
 
 	WeightLayer(size_t outputWidth) : outputWidth(outputWidth) {}
 
@@ -87,8 +86,8 @@ struct WeightLayer : Layer {
 		gpuMemoryManager->ManageDynamic(&deviceForwardOutputTensor, outputWidth);
 		gpuMemoryManager->ManageStatic(&deviceBackwardWeightTensor, inputWidth * outputWidth);
 		gpuMemoryManager->ManageDynamic(&deviceBackwardInputTensor, inputWidth);
-		gpuMemoryManager->ManageStatic(&deviceWeightMean, inputWidth * outputWidth);
-		gpuMemoryManager->ManageStatic(&deviceWeightVar, inputWidth * outputWidth);
+		gpuMemoryManager->ManageStatic(&deviceWeightBackwardMean, inputWidth * outputWidth);
+		gpuMemoryManager->ManageStatic(&deviceWeightBackwardVar, inputWidth * outputWidth);
 	}
 
 	float* GetForwardOutputTensor() { return deviceForwardOutputTensor; }
@@ -96,8 +95,8 @@ struct WeightLayer : Layer {
 
 	void InitializeParameters() {
 		gpuRand->Rand(deviceForwardWeightTensor, inputWidth * outputWidth);
-		cudaMemset(deviceWeightMean, 0, inputWidth * outputWidth * sizeof(float));
-		cudaMemset(deviceWeightVar, 0, inputWidth * outputWidth * sizeof(float));
+		cudaMemset(deviceWeightBackwardMean, 0, inputWidth * outputWidth * sizeof(float));
+		cudaMemset(deviceWeightBackwardVar, 0, inputWidth * outputWidth * sizeof(float));
 	}
 
 	void Forward() {
@@ -151,7 +150,7 @@ struct WeightLayer : Layer {
 
 	void UpdateParameters() {
 		AdamUpdate(
-			deviceWeightMean, deviceWeightVar,
+			deviceWeightBackwardMean, deviceWeightBackwardVar,
 			deviceBackwardWeightTensor, deviceForwardWeightTensor,
 			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
 			*learningRate, inputWidth * outputWidth
@@ -237,6 +236,25 @@ struct WeightLayer : Layer {
 		printf("--------------------\n\n");
 	}
 
+	void PrintUpdateParameters() {
+		printf("Weight Update Parameters Print\n");
+
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceBackwardWeightTensor, "Weight Gradient");
+
+		AdamUpdate(
+			deviceWeightBackwardMean, deviceWeightBackwardVar,
+			deviceBackwardWeightTensor, deviceForwardWeightTensor,
+			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
+			*learningRate, inputWidth * outputWidth
+		);
+
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceWeightBackwardMean, "Weight Gradient Mean");
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceWeightBackwardVar, "Weight Gradient Variance");
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceBackwardWeightTensor, "Weight Gradient without learningRate");
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceForwardWeightTensor, "Weight");
+		printf("--------------------\n\n");
+	}
+
 	void PrintParameters() {
 		printf("Weight Parameter Print\n");
 
@@ -248,8 +266,8 @@ struct WeightLayer : Layer {
 struct BiasLayer : Layer {
 	float* deviceForwardBiasTensor;
 	float* deviceBackwardBiasTensor;
-	float* deviceBiasMean;
-	float* deviceBiasVar;
+	float* deviceBiasBackwardMean;
+	float* deviceBiasBackwardVar;
 
 	BiasLayer() {}
 
@@ -258,8 +276,8 @@ struct BiasLayer : Layer {
 	void DescribeTensorDetails() {
 		gpuMemoryManager->ManageStatic(&deviceForwardBiasTensor, inputWidth);
 		gpuMemoryManager->ManageStatic(&deviceBackwardBiasTensor, inputWidth);
-		gpuMemoryManager->ManageStatic(&deviceBiasMean, inputWidth);
-		gpuMemoryManager->ManageStatic(&deviceBiasVar, inputWidth);
+		gpuMemoryManager->ManageStatic(&deviceBiasBackwardMean, inputWidth);
+		gpuMemoryManager->ManageStatic(&deviceBiasBackwardVar, inputWidth);
 	}
 
 	float* GetForwardOutputTensor() { return deviceForwardInputTensor; }
@@ -267,8 +285,8 @@ struct BiasLayer : Layer {
 
 	void InitializeParameters() {
 		gpuRand->Rand(deviceForwardBiasTensor, inputWidth);
-		cudaMemset(deviceBiasMean, 0, inputWidth * sizeof(float));
-		cudaMemset(deviceBiasVar, 0, inputWidth * sizeof(float));
+		cudaMemset(deviceBiasBackwardMean, 0, inputWidth * sizeof(float));
+		cudaMemset(deviceBiasBackwardVar, 0, inputWidth * sizeof(float));
 	}
 
 	void Forward() {
@@ -281,7 +299,7 @@ struct BiasLayer : Layer {
 
 	void UpdateParameters() {
 		AdamUpdate(
-			deviceBiasMean, deviceBiasVar,
+			deviceBiasBackwardMean, deviceBiasBackwardVar,
 			deviceBackwardBiasTensor, deviceForwardBiasTensor,
 			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
 			*learningRate, inputWidth
@@ -316,6 +334,25 @@ struct BiasLayer : Layer {
 		BatchAddBackward(deviceBackwardBiasTensor, deviceBackwardOutputTensor, *inputHeight, inputWidth);
 
 		PrintDeviceTensorf32(false, 1, inputWidth, deviceBackwardBiasTensor, "Bias Gradient");
+		printf("--------------------\n\n");
+	}
+
+	void PrintUpdateParameters() {
+		printf("Bias Parameter Print\n");
+
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceBackwardBiasTensor, "Bias Gradient");
+
+		AdamUpdate(
+			deviceBiasBackwardMean, deviceBiasBackwardVar,
+			deviceBackwardBiasTensor, deviceForwardBiasTensor,
+			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
+			*learningRate, inputWidth
+		);
+
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceBiasBackwardMean, "Bias Gradient Mean");
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceBiasBackwardVar, "Bias Gradient variance");
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceBackwardBiasTensor, "Bias Gradient without learningRate");
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceForwardBiasTensor, "Bias");
 		printf("--------------------\n\n");
 	}
 
@@ -372,6 +409,9 @@ struct ReluLayer : Layer {
 
 		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceBackwardOutputTensor, "Input Gradient");
 		printf("--------------------\n\n");
+	}
+
+	void PrintUpdateParameters() {
 	}
 
 	void PrintParameters() {
@@ -501,6 +541,15 @@ struct NeuralNetwork {
 		printf("||||||||||||||||||||\n\n");
 	}
 
+	void PrintUpdateParameters() {
+		meanCor *= meanBeta;
+		varCor *= varBeta;
+
+		printf("Update Parameters Print\n");
+		for (auto layer : layers) { layer->PrintUpdateParameters(); }
+		printf("||||||||||||||||||||\n\n");
+	}
+
 	void PrintParameters() {
 		printf("Parameter Print\n");
 		for (auto layer : layers) { layer->PrintParameters(); }
@@ -523,6 +572,7 @@ struct NeuralNetwork {
 
 int main() {
 	srand(time(NULL));
+	bool debug = true;
 
 	size_t inputWidth = 16;
 	size_t hiddenWidth = 16;
@@ -564,7 +614,7 @@ int main() {
 	printf("\n");
 
 
-	{
+	if (debug){
 		for (size_t batch = 0; batch < neuralNetwork.inputHeight; batch++) {
 			uint8_t a = rand();
 			uint8_t b = rand();
@@ -581,13 +631,16 @@ int main() {
 
 		neuralNetwork.PrintForward();
 		neuralNetwork.PrintBackward();
+		neuralNetwork.PrintUpdateParameters();
+		neuralNetwork.PrintError();
+	} else {
+		neuralNetwork.PrintParameters();
 	}
-	//neuralNetwork.PrintParameters();
-
-	printf("Press any key to exit\n");
 
 	delete[] hostInputTensor;
 	delete[] hostOutputTensor;
+
+	printf("Press any key to exit\n");
 
 	return 0;
 }
