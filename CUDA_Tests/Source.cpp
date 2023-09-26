@@ -251,6 +251,13 @@ struct NeuralNetwork {
 
 	size_t maxInputHeight;
 
+	float meanBeta;
+	float varBeta;
+	float epsilon;
+
+	float meanCor;
+	float varCor;
+
 	NeuralNetwork(size_t inputWidth, size_t outputWidth) :
 		inputWidth(inputWidth), outputWidth(outputWidth) {
 		FailIf(cublasCreate(&cublasHandle) != CUBLAS_STATUS_SUCCESS, "cublasCreate failed");
@@ -260,6 +267,13 @@ struct NeuralNetwork {
 
 		gpuMemoryManager.ManageDynamic(&deviceForwardInputTensor, inputWidth);
 		gpuMemoryManager.ManageDynamic(&deviceBackwardOutputTensor, outputWidth);
+
+		meanBeta = 0.9f;
+		varBeta = 0.999f;
+		epsilon = 1e-8f;
+
+		meanCor = 1;
+		varCor = 1;
 	}
 
 	~NeuralNetwork() {

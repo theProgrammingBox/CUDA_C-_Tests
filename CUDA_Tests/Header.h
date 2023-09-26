@@ -9,31 +9,25 @@
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 
-void FailIf(bool condition, const char* message)
-{
-	if (condition)
-	{
+void FailIf(bool condition, const char* message) {
+	if (condition) {
 		fprintf(stderr, "%s", message);
 		exit(0);
 	}
 }
 
-float InvSqrt(float number)
-{
+float InvSqrt(float number) {
 	long i = 0x5F1FFFF9 - (*(long*)&number >> 1);
 	float tmp = *(float*)&i;
 	return tmp * 0.703952253f * (2.38924456f - number * tmp * tmp);
 }
 
-void PrintHostTensorf32(size_t height, size_t width, float* arr, const char* label = "Tensor", size_t majorStride = 0, size_t tensorSize = 0, size_t batchCount = 1)
-{
+void PrintHostTensorf32(size_t height, size_t width, float* arr, const char* label = "Tensor", size_t majorStride = 0, size_t tensorSize = 0, size_t batchCount = 1) {
 	if (majorStride == 0)
 		majorStride = width;
 	printf("%s:\n", label);
-	for (size_t b = batchCount; b--;)
-	{
-		for (size_t i = 0; i < height; i++)
-		{
+	for (size_t b = batchCount; b--;) {
+		for (size_t i = 0; i < height; i++) {
 			for (size_t j = 0; j < width; j++)
 				printf("%6.3f ", arr[i * majorStride + j]);
 			printf("\n");
@@ -43,17 +37,14 @@ void PrintHostTensorf32(size_t height, size_t width, float* arr, const char* lab
 	}
 }
 
-void PrintDeviceTensorf32(size_t height, size_t width, float* arr, const char* label = "Tensor", size_t majorStride = 0, size_t tensorSize = 0, size_t batchCount = 1)
-{
+void PrintDeviceTensorf32(size_t height, size_t width, float* arr, const char* label = "Tensor", size_t majorStride = 0, size_t tensorSize = 0, size_t batchCount = 1) {
 	float* hostArr = (float*)malloc(height * width * sizeof(float));
 	cudaMemcpy(hostArr, arr, height * width * sizeof(float), cudaMemcpyDeviceToHost);
 	if (majorStride == 0)
 		majorStride = width;
 	printf("%s:\n", label);
-	for (size_t b = batchCount; b--;)
-	{
-		for (size_t i = 0; i < height; i++)
-		{
+	for (size_t b = batchCount; b--;) {
+		for (size_t i = 0; i < height; i++) {
 			for (size_t j = 0; j < width; j++)
 				printf("%6.3f ", hostArr[i * majorStride + j]);
 			printf("\n");
@@ -64,11 +55,9 @@ void PrintDeviceTensorf32(size_t height, size_t width, float* arr, const char* l
 	free(hostArr);
 }
 
-__global__ void GpuReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride)
-{
+__global__ void GpuReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride) {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < width * height)
-	{
+	if (idx < width * height) {
 		uint32_t wx = idx % width;
 		uint32_t hx = idx / width;
 		uint32_t index = hx * majorStride + wx;
@@ -76,16 +65,13 @@ __global__ void GpuReluForward(float* arr, uint32_t height, uint32_t width, uint
 	}
 }
 
-void ReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride)
-{
+void ReluForward(float* arr, uint32_t height, uint32_t width, uint32_t majorStride) {
 	GpuReluForward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, height, width, majorStride);
 }
 
-__global__ void GpuReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride)
-{
+__global__ void GpuReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride) {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < width * height)
-	{
+	if (idx < width * height) {
 		uint32_t wx = idx % width;
 		uint32_t hx = idx / width;
 		uint32_t index = hx * majorStride + wx;
@@ -93,31 +79,25 @@ __global__ void GpuReluBackward(float* arr, float* output, uint32_t height, uint
 	}
 }
 
-void ReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride)
-{
+void ReluBackward(float* arr, float* output, uint32_t height, uint32_t width, uint32_t majorStride) {
 	GpuReluBackward << <ceil(0.0009765625f * width * height), 1024 >> > (arr, output, height, width, majorStride);
 }
 
-__global__ void GPUBatchAddForward(float* arr, float* output, uint32_t height, uint32_t width)
-{
+__global__ void GPUBatchAddForward(float* arr, float* output, uint32_t height, uint32_t width) {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < width)
-	{
+	if (idx < width) {
 		for (uint32_t i = 0; i < height; i++)
 			output[i * width + idx] += arr[idx];
 	}
 }
 
-void BatchAddForward(float* arr, float* output, uint32_t height, uint32_t width)
-{
+void BatchAddForward(float* arr, float* output, uint32_t height, uint32_t width) {
 	GPUBatchAddForward << <ceil(0.0009765625f * width), 1024 >> > (arr, output, height, width);
 }
 
-__global__ void GPUBatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width)
-{
+__global__ void GPUBatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width) {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < width)
-	{
+	if (idx < width) {
 		float alpha = 1.0f / sqrtf(height);
 		float sum = 0.0f;
 		for (uint32_t i = 0; i < height; i++)
@@ -126,16 +106,28 @@ __global__ void GPUBatchAddBackward(float* arr, float* output, uint32_t height, 
 	}
 }
 
-void BatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width)
-{
+void BatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width) {
 	GPUBatchAddBackward << <ceil(0.0009765625f * width), 1024 >> > (arr, output, height, width);
+}
+
+__global__ void AdamUpdate(float* gradMean, float* gradVar, float* grad, float meanBeta, float varBeta, float epsilon, float meanCor, float varCor, size_t size) {
+	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (idx < size) {
+		float gradient = grad[idx];
+		float mean = meanBeta * gradMean[idx] + (1.0f - meanBeta) * gradient;
+		float var = varBeta * gradVar[idx] + (1.0f - varBeta) * gradient * gradient;
+		float meanCorr = mean / (1.0f - meanCor);
+		float varCorr = var / (1.0f - varCor);
+		gradMean[idx] = mean;
+		gradVar[idx] = var;
+		grad[idx] = meanCorr / (sqrtf(varCorr) + epsilon);
+	}
 }
 
 __global__ void gpuRandFunc(float* arr, uint32_t size, uint32_t seed1, uint32_t seed2)
 {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
-	if (idx < size)
-	{
+	if (idx < size) {
 		uint32_t Hash = idx;
 
 		Hash ^= seed1;
@@ -147,12 +139,10 @@ __global__ void gpuRandFunc(float* arr, uint32_t size, uint32_t seed1, uint32_t 
 	}
 }
 
-struct GpuRand
-{
+struct GpuRand {
 	uint32_t seed1, seed2;
 
-	GpuRand()
-	{
+	GpuRand() {
 		seed1 = time(NULL) ^ 0xE621B963;
 		seed2 = 0x6053653F ^ (time(NULL) >> 32);
 
@@ -160,8 +150,7 @@ struct GpuRand
 		printf("Seed2: %u\n\n", seed2);
 	}
 
-	void Rand(float* arr, uint32_t size)
-	{
+	void Rand(float* arr, uint32_t size) {
 		seed1 ^= seed2;
 		seed1 *= 0xBAC57D37;
 		seed2 ^= seed1;
