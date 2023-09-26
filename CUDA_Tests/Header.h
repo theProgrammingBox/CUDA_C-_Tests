@@ -86,8 +86,10 @@ void ReluBackward(float* arr, float* output, uint32_t height, uint32_t width, ui
 __global__ void GPUBatchAddForward(float* arr, float* output, uint32_t height, uint32_t width) {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx < width) {
+		//float alpha = 1.0f / sqrtf(width);
+		float alpha = 1.0f;
 		for (uint32_t i = 0; i < height; i++)
-			output[i * width + idx] += arr[idx];
+			output[i * width + idx] += alpha * arr[idx];
 	}
 }
 
@@ -98,7 +100,8 @@ void BatchAddForward(float* arr, float* output, uint32_t height, uint32_t width)
 __global__ void GPUBatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width) {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx < width) {
-		float alpha = 1.0f / sqrtf(height);
+		//float alpha = 1.0f / sqrtf(height);
+		float alpha = 1.0f;
 		float sum = 0.0f;
 		for (uint32_t i = 0; i < height; i++)
 			sum += output[i * width + idx];

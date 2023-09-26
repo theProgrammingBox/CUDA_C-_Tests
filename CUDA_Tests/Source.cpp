@@ -6,6 +6,7 @@ TODO:
 -- memset to 0 with correction to "unbias" the first few iterations
 - Test normilization per layer (weight specifically)
 -- in the simple case of outputing the input, no normilization is faster
+-- with adam, unnormilized seems to be faster
 */
 
 struct Layer {
@@ -91,8 +92,8 @@ struct WeightLayer : Layer {
 	}
 
 	void Forward() {
-		float alpha = 1.0f / sqrtf(inputWidth);
-		//float alpha = 1.0f;
+		//float alpha = 1.0f / sqrtf(inputWidth);
+		float alpha = 1.0f;
 		float beta = 0.0f;
 
 		FailIf(
@@ -109,8 +110,8 @@ struct WeightLayer : Layer {
 	}
 
 	void Backward() {
-		float alpha = 1.0f / sqrtf(*inputHeight);
-		//float alpha = 1.0f;
+		//float alpha = 1.0f / sqrtf(*inputHeight);
+		float alpha = 1.0f;
 		float beta = 0.0f;
 
 		FailIf(
@@ -125,7 +126,7 @@ struct WeightLayer : Layer {
 			) != CUBLAS_STATUS_SUCCESS, "cublasSgemm failed"
 		);
 
-		alpha = 1.0f / sqrtf(outputWidth);
+		//alpha = 1.0f / sqrtf(outputWidth);
 		FailIf(
 			cublasSgemm(
 				*cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
@@ -140,14 +141,6 @@ struct WeightLayer : Layer {
 	}
 
 	void UpdateParameters() {
-		/*FailIf(
-			cublasSaxpy(
-				*cublasHandle, inputWidth * outputWidth,
-				learningRate,
-				deviceBackwardWeightTensor, 1,
-				deviceForwardWeightTensor, 1
-			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
-		);*/
 		AdamUpdate(
 			deviceWeightMean, deviceWeightVar,
 			deviceBackwardWeightTensor, deviceForwardWeightTensor,
@@ -204,14 +197,6 @@ struct BiasLayer : Layer {
 	}
 
 	void UpdateParameters() {
-		/*FailIf(
-			cublasSaxpy(
-				*cublasHandle, inputWidth,
-				learningRate,
-				deviceBackwardBiasTensor, 1,
-				deviceForwardBiasTensor, 1
-			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
-		);*/
 		AdamUpdate(
 			deviceBiasMean, deviceBiasVar,
 			deviceBackwardBiasTensor, deviceForwardBiasTensor,
