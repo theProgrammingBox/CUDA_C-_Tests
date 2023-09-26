@@ -14,17 +14,27 @@ struct Layer {
 	GpuRand* gpuRand;
 	size_t* inputHeight;
 	float* learningRate;
+	float* meanBeta;
+	float* varBeta;
+	float* epsilon;
+	float* meanCor;
+	float* varCor;
 
 	size_t inputWidth;
 	float* deviceForwardInputTensor;
 	float* deviceBackwardOutputTensor;
 
-	void Initialize(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate) {
+	void Initialize(cublasHandle_t* cublasHandle, GpuMemoryManager* gpuMemoryManager, GpuRand* gpuRand, size_t* inputHeight, float* learningRate, float* meanBeta, float* varBeta, float* epsilon, float* meanCor, float* varCor) {
 		this->cublasHandle = cublasHandle;
 		this->gpuMemoryManager = gpuMemoryManager;
 		this->gpuRand = gpuRand;
 		this->inputHeight = inputHeight;
 		this->learningRate = learningRate;
+		this->meanBeta = meanBeta;
+		this->varBeta = varBeta;
+		this->epsilon = epsilon;
+		this->meanCor = meanCor;
+		this->varCor = varCor;
 	}
 
 	virtual size_t GetOutputDim() = 0;
@@ -55,6 +65,8 @@ struct WeightLayer : Layer {
 	float* deviceForwardOutputTensor;
 	float* deviceBackwardWeightTensor;
 	float* deviceBackwardInputTensor;
+	float* deviceWeightMean;
+	float* deviceWeightVar;
 
 	WeightLayer(size_t outputWidth) : outputWidth(outputWidth) {}
 
@@ -65,6 +77,8 @@ struct WeightLayer : Layer {
 		gpuMemoryManager->ManageDynamic(&deviceForwardOutputTensor, outputWidth);
 		gpuMemoryManager->ManageStatic(&deviceBackwardWeightTensor, inputWidth * outputWidth);
 		gpuMemoryManager->ManageDynamic(&deviceBackwardInputTensor, inputWidth);
+		gpuMemoryManager->ManageStatic(&deviceWeightMean, inputWidth * outputWidth);
+		gpuMemoryManager->ManageStatic(&deviceWeightVar, inputWidth * outputWidth);
 	}
 
 	float* GetForwardOutputTensor() { return deviceForwardOutputTensor; }
@@ -72,6 +86,8 @@ struct WeightLayer : Layer {
 
 	void InitializeParameters() {
 		gpuRand->Rand(deviceForwardWeightTensor, inputWidth * outputWidth);
+		cudaMemset(deviceWeightMean, 0, inputWidth * outputWidth * sizeof(float));
+		cudaMemset(deviceWeightVar, 0, inputWidth * outputWidth * sizeof(float));
 	}
 
 	void Forward() {
@@ -124,13 +140,19 @@ struct WeightLayer : Layer {
 	}
 
 	void UpdateParameters() {
-		FailIf(
+		/*FailIf(
 			cublasSaxpy(
 				*cublasHandle, inputWidth * outputWidth,
 				learningRate,
 				deviceBackwardWeightTensor, 1,
 				deviceForwardWeightTensor, 1
 			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
+		);*/
+		AdamUpdate(
+			deviceWeightMean, deviceWeightVar,
+			deviceBackwardWeightTensor, deviceForwardWeightTensor,
+			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
+			*learningRate, inputWidth * outputWidth
 		);
 	}
 
@@ -150,6 +172,8 @@ struct WeightLayer : Layer {
 struct BiasLayer : Layer {
 	float* deviceForwardBiasTensor;
 	float* deviceBackwardBiasTensor;
+	float* deviceBiasMean;
+	float* deviceBiasVar;
 
 	BiasLayer() {}
 
@@ -158,6 +182,8 @@ struct BiasLayer : Layer {
 	void DescribeTensorDetails() {
 		gpuMemoryManager->ManageStatic(&deviceForwardBiasTensor, inputWidth);
 		gpuMemoryManager->ManageStatic(&deviceBackwardBiasTensor, inputWidth);
+		gpuMemoryManager->ManageStatic(&deviceBiasMean, inputWidth);
+		gpuMemoryManager->ManageStatic(&deviceBiasVar, inputWidth);
 	}
 
 	float* GetForwardOutputTensor() { return deviceForwardInputTensor; }
@@ -165,6 +191,8 @@ struct BiasLayer : Layer {
 
 	void InitializeParameters() {
 		gpuRand->Rand(deviceForwardBiasTensor, inputWidth);
+		cudaMemset(deviceBiasMean, 0, inputWidth * sizeof(float));
+		cudaMemset(deviceBiasVar, 0, inputWidth * sizeof(float));
 	}
 
 	void Forward() {
@@ -176,13 +204,19 @@ struct BiasLayer : Layer {
 	}
 
 	void UpdateParameters() {
-		FailIf(
+		/*FailIf(
 			cublasSaxpy(
 				*cublasHandle, inputWidth,
 				learningRate,
 				deviceBackwardBiasTensor, 1,
 				deviceForwardBiasTensor, 1
 			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
+		);*/
+		AdamUpdate(
+			deviceBiasMean, deviceBiasVar,
+			deviceBackwardBiasTensor, deviceForwardBiasTensor,
+			*meanBeta, *varBeta, *epsilon, *meanCor, *varCor,
+			*learningRate, inputWidth
 		);
 	}
 
@@ -283,7 +317,7 @@ struct NeuralNetwork {
 	}
 
 	void AddLayer(Layer* layer) {
-		layer->Initialize(&cublasHandle, &gpuMemoryManager, &gpuRand, &inputHeight, &learningRate);
+		layer->Initialize(&cublasHandle, &gpuMemoryManager, &gpuRand, &inputHeight, &learningRate, &meanBeta, &varBeta, &epsilon, &meanCor, &varCor);
 		if (layers.size() > 0) {
 			layer->AssignInputDim(layers.back()->GetOutputDim());
 			layer->DescribeTensorDetails();
@@ -332,6 +366,8 @@ struct NeuralNetwork {
 	}
 
 	void UpdateParameters() {
+		meanCor *= meanBeta;
+		varCor *= varBeta;
 		for (auto layer : layers) { layer->UpdateParameters(); }
 	}
 

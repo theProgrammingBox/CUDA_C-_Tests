@@ -110,7 +110,7 @@ void BatchAddBackward(float* arr, float* output, uint32_t height, uint32_t width
 	GPUBatchAddBackward << <ceil(0.0009765625f * width), 1024 >> > (arr, output, height, width);
 }
 
-__global__ void AdamUpdate(float* gradMean, float* gradVar, float* grad, float meanBeta, float varBeta, float epsilon, float meanCor, float varCor, size_t size) {
+__global__ void GPUAdamUpdate(float* gradMean, float* gradVar, float* grad, float* param, float meanBeta, float varBeta, float epsilon, float meanCor, float varCor, float learningRate, size_t size) {
 	uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (idx < size) {
 		float gradient = grad[idx];
@@ -120,8 +120,12 @@ __global__ void AdamUpdate(float* gradMean, float* gradVar, float* grad, float m
 		float varCorr = var / (1.0f - varCor);
 		gradMean[idx] = mean;
 		gradVar[idx] = var;
-		grad[idx] = meanCorr / (sqrtf(varCorr) + epsilon);
+		param[idx] += learningRate * meanCorr / (sqrtf(varCorr) + epsilon);
 	}
+}
+
+void AdamUpdate(float* gradMean, float* gradVar, float* grad, float* param, float meanBeta, float varBeta, float epsilon, float meanCor, float varCor, float learningRate, size_t size) {
+	GPUAdamUpdate << <ceil(0.0009765625f * size), 1024 >> > (gradMean, gradVar, grad, param, meanBeta, varBeta, epsilon, meanCor, varCor, learningRate, size);
 }
 
 __global__ void gpuRandFunc(float* arr, uint32_t size, uint32_t seed1, uint32_t seed2)
