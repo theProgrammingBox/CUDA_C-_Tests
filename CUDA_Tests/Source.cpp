@@ -165,15 +165,81 @@ struct WeightLayer : Layer {
 	}
 
 	void PrintForward() {
-		PrintDeviceTensorf32(*inputHeight, outputWidth, deviceForwardOutputTensor, "weight - deviceForwardOutputTensor");
+		printf("Weight Forward Print\n");
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceForwardInputTensor, "Input");
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceForwardWeightTensor, "Weight");
+
+		//float alpha = 1.0f / sqrtf(inputWidth);
+		float alpha = 1.0f;
+		float beta = 0.0f;
+
+		FailIf(
+			cublasSgemm(
+				*cublasHandle, CUBLAS_OP_N, CUBLAS_OP_N,
+				outputWidth, *inputHeight, inputWidth,
+				&alpha,
+				deviceForwardWeightTensor, outputWidth,
+				deviceForwardInputTensor, inputWidth,
+				&beta,
+				deviceForwardOutputTensor, outputWidth
+			) != CUBLAS_STATUS_SUCCESS, "cublasSgemm failed"
+		);
+
+		PrintDeviceTensorf32(false, *inputHeight, outputWidth, deviceForwardOutputTensor, "Output");
+		printf("--------------------\n\n");
 	}
 
 	void PrintBackward() {
-		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardInputTensor, "weight - deviceBackwardInputTensor");
+		printf("Weight Backward Print\n");
+
+		PrintDeviceTensorf32(true, *inputHeight, inputWidth, deviceForwardInputTensor, "Input Transposed");
+		PrintDeviceTensorf32(false, *inputHeight, outputWidth, deviceBackwardOutputTensor, "Output Gradient");
+
+		//float alpha = 1.0f / sqrtf(*inputHeight);
+		float alpha = 1.0f;
+		float beta = 0.0f;
+
+		FailIf(
+			cublasSgemm(
+				*cublasHandle, CUBLAS_OP_N, CUBLAS_OP_T,
+				outputWidth, inputWidth, *inputHeight,
+				&alpha,
+				deviceBackwardOutputTensor, outputWidth,
+				deviceForwardInputTensor, inputWidth,
+				&beta,
+				deviceBackwardWeightTensor, outputWidth
+			) != CUBLAS_STATUS_SUCCESS, "cublasSgemm failed"
+		);
+
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceBackwardWeightTensor, "Weight Gradient");
+		printf("\n");
+
+		PrintDeviceTensorf32(false, *inputHeight, outputWidth, deviceBackwardOutputTensor, "Output Gradient");
+		PrintDeviceTensorf32(true, inputWidth, outputWidth, deviceForwardWeightTensor, "Weight Transposed");
+
+		//alpha = 1.0f / sqrtf(outputWidth);
+		FailIf(
+			cublasSgemm(
+				*cublasHandle, CUBLAS_OP_T, CUBLAS_OP_N,
+				inputWidth, *inputHeight, outputWidth,
+				&alpha,
+				deviceForwardWeightTensor, outputWidth,
+				deviceBackwardOutputTensor, outputWidth,
+				&beta,
+				deviceBackwardInputTensor, inputWidth
+			) != CUBLAS_STATUS_SUCCESS, "cublasSgemm failed"
+		);
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceBackwardInputTensor, "Input Gradient");
+		printf("--------------------\n\n");
 	}
 
 	void PrintParameters() {
-		PrintDeviceTensorf32(inputWidth, outputWidth, deviceForwardWeightTensor, "weight - deviceForwardWeightTensor");
+		printf("Weight Parameter Print\n");
+
+		PrintDeviceTensorf32(false, inputWidth, outputWidth, deviceForwardWeightTensor, "Weight");
+		printf("--------------------\n\n");
 	}
 };
 
@@ -229,15 +295,32 @@ struct BiasLayer : Layer {
 	}
 
 	void PrintForward() {
-		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceForwardInputTensor, "bias - deviceForwardOutputTensor");
+		printf("Bias Forward Print\n");
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceForwardInputTensor, "Input");
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceForwardBiasTensor, "Bias");
+
+		BatchAddForward(deviceForwardBiasTensor, deviceForwardInputTensor, *inputHeight, inputWidth);
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceForwardInputTensor, "Output");
+		printf("--------------------\n\n");
 	}
 
 	void PrintBackward() {
-		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardOutputTensor, "bias - deviceBackwardInputTensor");
+		printf("Bias Backward Print\n");
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceBackwardOutputTensor, "Output Gradient");
+
+		BatchAddBackward(deviceBackwardBiasTensor, deviceBackwardOutputTensor, *inputHeight, inputWidth);
+
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceForwardBiasTensor, "Bias Gradient");
+		printf("--------------------\n\n");
 	}
 
 	void PrintParameters() {
-		PrintDeviceTensorf32(1, inputWidth, deviceForwardBiasTensor, "bias - deviceForwardBiasTensor");
+		printf("Bias Parameter Print\n");
+
+		PrintDeviceTensorf32(false, 1, inputWidth, deviceForwardBiasTensor, "Bias");
 	}
 };
 
@@ -267,11 +350,25 @@ struct ReluLayer : Layer {
 	}
 
 	void PrintForward() {
-		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceForwardInputTensor, "relu - deviceForwardOutputTensor");
+		printf("Relu Forward Print\n");
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceForwardInputTensor, "Input");
+
+		ReluForward(deviceForwardInputTensor, *inputHeight, inputWidth, inputWidth);
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceForwardInputTensor, "Output");
+		printf("--------------------\n\n");
 	}
 
 	void PrintBackward() {
-		PrintDeviceTensorf32(*inputHeight, inputWidth, deviceBackwardOutputTensor, "relu - deviceBackwardInputTensor");
+		printf("Relu Backward Print\n");
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceBackwardOutputTensor, "Output Gradient");
+
+		ReluBackward(deviceForwardInputTensor, deviceBackwardOutputTensor, *inputHeight, inputWidth, inputWidth);
+
+		PrintDeviceTensorf32(false, *inputHeight, inputWidth, deviceBackwardOutputTensor, "Input Gradient");
+		printf("--------------------\n\n");
 	}
 
 	void PrintParameters() {
@@ -352,7 +449,7 @@ struct NeuralNetwork {
 
 	void Forward() {
 		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
-		for (size_t i = 0; i < layers.size(); i++) { layers[i]->Forward(); }
+		for (auto layer : layers) { layer->Forward(); }
 	}
 
 	void Backward() {
@@ -376,6 +473,37 @@ struct NeuralNetwork {
 		for (auto layer : layers) { layer->UpdateParameters(); }
 	}
 
+	void PrintForward() {
+		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
+
+		printf("Forward Print\n");
+		for (auto layer : layers) { layer->PrintForward(); }
+		printf("||||||||||||||||||||\n\n");
+	}
+
+	void PrintBackward() {
+		FailIf(inputHeight > maxInputHeight, "inputHeight > maxInputHeight");
+		float alpha = -1.0f;
+		FailIf(
+			cublasSaxpy(
+				cublasHandle, outputWidth * inputHeight,
+				&alpha,
+				layers.back()->GetForwardOutputTensor(), 1,
+				deviceBackwardOutputTensor, 1
+			) != CUBLAS_STATUS_SUCCESS, "cublasSaxpy failed"
+		);
+
+		printf("Backward Print\n");
+		for (size_t i = layers.size(); i--;) { layers[i]->PrintBackward(); }
+		printf("||||||||||||||||||||\n\n");
+	}
+
+	void PrintParameters() {
+		printf("Parameter Print\n");
+		for (auto layer : layers) { layer->PrintParameters(); }
+		printf("||||||||||||||||||||\n\n");
+	}
+
 	void PrintError() {
 		float error = 0.0f;
 		FailIf(
@@ -387,10 +515,6 @@ struct NeuralNetwork {
 		);
 		error /= outputWidth * inputHeight;
 		printf("error: %f\n", error);
-	}
-
-	void PrintParameters() {
-		for (auto layer : layers) { layer->PrintParameters(); }
 	}
 };
 
@@ -411,26 +535,23 @@ int main() {
 	neuralNetwork.AddLayer(new WeightLayer(outputWidth));
 	neuralNetwork.Finalize();
 
-	float* hostInputTensor = new float[inputWidth];
-	float* hostOutputTensor = new float[outputWidth];
+	float* hostInputTensor = new float[inputWidth * neuralNetwork.maxInputHeight];
+	float* hostOutputTensor = new float[outputWidth * neuralNetwork.maxInputHeight];
 
 	for (size_t i = 0; i < 40000; i++) {
-		uint8_t a = rand();
-		uint8_t b = rand();
-		uint8_t c = a + b;
+		for (size_t batch = 0; batch < neuralNetwork.inputHeight; batch++) {
+			uint8_t a = rand();
+			uint8_t b = rand();
+			uint8_t c = a + b;
 
-		// the input is the binary representation of a and b while the output is the binary representation of c
-		for (size_t j = 0; j < 8; j++) {
-			hostInputTensor[j] = (a >> j) & 1;
-			hostInputTensor[j + 8] = (b >> j) & 1;
-			hostOutputTensor[j] = (c >> j) & 1;
+			for (size_t j = 0; j < 8; j++) {
+				hostInputTensor[batch * inputWidth + j] = (a >> j) & 1;
+				hostInputTensor[batch * inputWidth + j + 8] = (b >> j) & 1;
+				hostOutputTensor[batch * outputWidth + j] = (c >> j) & 1;
+			}
 		}
-
-		cudaMemcpy(neuralNetwork.deviceForwardInputTensor, hostInputTensor, inputWidth * sizeof(float), cudaMemcpyHostToDevice);
-		cudaMemcpy(neuralNetwork.deviceBackwardOutputTensor, hostOutputTensor, outputWidth * sizeof(float), cudaMemcpyHostToDevice);
-
-		//neuralNetwork.gpuRand.Rand(neuralNetwork.deviceForwardInputTensor, neuralNetwork.inputHeight * neuralNetwork.inputWidth);
-		//cudaMemcpy(neuralNetwork.deviceBackwardOutputTensor, neuralNetwork.deviceForwardInputTensor, neuralNetwork.inputHeight * neuralNetwork.inputWidth * sizeof(float), cudaMemcpyDeviceToDevice);
+		cudaMemcpy(neuralNetwork.deviceForwardInputTensor, hostInputTensor, inputWidth * neuralNetwork.inputHeight * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(neuralNetwork.deviceBackwardOutputTensor, hostOutputTensor, outputWidth * neuralNetwork.inputHeight * sizeof(float), cudaMemcpyHostToDevice);
 		
 		neuralNetwork.Forward();
 		neuralNetwork.Backward();
@@ -439,7 +560,26 @@ int main() {
 	}
 	printf("\n");
 
-	neuralNetwork.PrintParameters();
+
+	{
+		for (size_t batch = 0; batch < neuralNetwork.inputHeight; batch++) {
+			uint8_t a = rand();
+			uint8_t b = rand();
+			uint8_t c = a + b;
+
+			for (size_t j = 0; j < 8; j++) {
+				hostInputTensor[batch * inputWidth + j] = (a >> j) & 1;
+				hostInputTensor[batch * inputWidth + j + 8] = (b >> j) & 1;
+				hostOutputTensor[batch * outputWidth + j] = (c >> j) & 1;
+			}
+		}
+		cudaMemcpy(neuralNetwork.deviceForwardInputTensor, hostInputTensor, inputWidth * neuralNetwork.inputHeight * sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(neuralNetwork.deviceBackwardOutputTensor, hostOutputTensor, outputWidth * neuralNetwork.inputHeight * sizeof(float), cudaMemcpyHostToDevice);
+
+		neuralNetwork.PrintForward();
+		neuralNetwork.PrintBackward();
+	}
+	//neuralNetwork.PrintParameters();
 
 	printf("Press any key to exit\n");
 

@@ -37,21 +37,34 @@ void PrintHostTensorf32(size_t height, size_t width, float* arr, const char* lab
 	}
 }
 
-void PrintDeviceTensorf32(size_t height, size_t width, float* arr, const char* label = "Tensor", size_t majorStride = 0, size_t tensorSize = 0, size_t batchCount = 1) {
-	float* hostArr = (float*)malloc(height * width * sizeof(float));
-	cudaMemcpy(hostArr, arr, height * width * sizeof(float), cudaMemcpyDeviceToHost);
-	if (majorStride == 0)
+void PrintDeviceTensorf32(
+	bool transposed,
+	size_t height, size_t width,
+	float* arr, const char* label = "Tensor",
+	size_t majorStride = 0, size_t tensorSize = 0,
+	size_t batchCount = 1)
+{
+	float* hostArr = (float*)malloc(height * width * sizeof(float) * batchCount);
+	cudaMemcpy(hostArr, arr, height * width * sizeof(float) * batchCount, cudaMemcpyDeviceToHost);
+
+	if (majorStride == 0) {
 		majorStride = width;
+	}
+
 	printf("%s:\n", label);
-	for (size_t b = batchCount; b--;) {
-		for (size_t i = 0; i < height; i++) {
-			for (size_t j = 0; j < width; j++)
-				printf("%6.3f ", hostArr[i * majorStride + j]);
+
+	for (size_t b = 0; b < batchCount; b++) {
+		for (size_t i = 0; i < (transposed ? width : height); i++) {
+			for (size_t j = 0; j < (transposed ? height : width); j++) {
+				size_t row = transposed ? j : i;
+				size_t col = transposed ? i : j;
+				printf("%6.3f ", hostArr[b * tensorSize + row * majorStride + col]);
+			}
 			printf("\n");
 		}
 		printf("\n");
-		hostArr += tensorSize;
 	}
+
 	free(hostArr);
 }
 
