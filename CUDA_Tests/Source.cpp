@@ -4,6 +4,7 @@
 TODO:
 - Test addition
 - Export history of parameter details, maybe the layer tensor values as well in case it can give some insight
+- test out invsqrt
 */
 
 /*
