@@ -3,6 +3,7 @@
 /*
 TODO:
 - Add Adam
+-- memset to 0 with correction to "unbias" the first few iterations
 - Test normilization per layer (weight specifically)
 -- in the simple case of outputing the input, no normilization is faster
 */
