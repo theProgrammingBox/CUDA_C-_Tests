@@ -590,9 +590,9 @@ int main() {
 	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
 	neuralNetwork.AddLayer(new BiasLayer());
 	neuralNetwork.AddLayer(new ReluLayer());
-	neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
+	/*neuralNetwork.AddLayer(new WeightLayer(hiddenWidth));
 	neuralNetwork.AddLayer(new BiasLayer());
-	neuralNetwork.AddLayer(new ReluLayer());
+	neuralNetwork.AddLayer(new ReluLayer());*/
 	neuralNetwork.AddLayer(new WeightLayer(outputWidth));
 	neuralNetwork.Finalize();
 

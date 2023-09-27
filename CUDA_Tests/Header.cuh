@@ -8,6 +8,7 @@
 
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
+#include "device_launch_parameters.h"
 
 void FailIf(bool condition, const char* message) {
 	if (condition) {
