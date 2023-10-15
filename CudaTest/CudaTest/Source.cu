@@ -64,28 +64,63 @@ struct GpuRand {
     }
 };
 
+void PrintDeviceTensorf32(
+    bool transposed,
+    size_t height, size_t width,
+    float* arr, const char* label = "Tensor",
+    size_t majorStride = 0, size_t tensorSize = 0,
+    size_t batchCount = 1)
+{
+    float* hostArr = (float*)malloc(height * width * sizeof(float) * batchCount);
+    cudaMemcpy(hostArr, arr, height * width * sizeof(float) * batchCount, cudaMemcpyDeviceToHost);
+
+    if (majorStride == 0) {
+        majorStride = width;
+    }
+
+    printf("%s:\n", label);
+
+    for (size_t b = 0; b < batchCount; b++) {
+        for (size_t i = 0; i < (transposed ? width : height); i++) {
+            for (size_t j = 0; j < (transposed ? height : width); j++) {
+                size_t row = transposed ? j : i;
+                size_t col = transposed ? i : j;
+                printf("%6.3f ", hostArr[b * tensorSize + row * majorStride + col]);
+            }
+            printf("\n");
+        }
+        printf("\n");
+    }
+
+    free(hostArr);
+}
+
 int main()
 {
     cublasLtMatmulDesc_t operationDesc = NULL;
-    cublasLtMatrixLayout_t Adesc = NULL, Bdesc = NULL, Cdesc = NULL, Ddesc = NULL;
+    cublasLtMatrixLayout_t aDesc = NULL, BDesc = NULL, biasDesc = NULL, outputDesc = NULL;
     cublasLtMatmulPreference_t preference = NULL;
 
-    cublasOperation_t transa = CUBLAS_OP_T;
-    cublasOperation_t transb = CUBLAS_OP_N;
+    cublasOperation_t inputTrans = CUBLAS_OP_T;
+    cublasOperation_t weightTrans = CUBLAS_OP_N;
 
     float alpha = 1.0;
-    float beta = 0.0;
+    float beta = 1.0;
 
-    size_t m = 1024;
-    size_t n = 1024;
-    size_t k = 1024;
-    size_t N = 32;
+    size_t inputWidth = 32;
+    size_t inputHeight = 16;
+    size_t outputWidth = 8;
+    size_t batches = 1;
 
-    size_t lda = 1024;
-    size_t ldb = 1024;
-    size_t ldc = 1024;
+    size_t input1DStride = inputWidth;
+    size_t weight1DStride = outputWidth;
+    size_t output1DStride = outputWidth;
 
-    float* Adev, * Bdev, * Cdev, * biasDev;
+    size_t input2DStride = inputWidth * inputHeight;
+    size_t weight2DStride = outputWidth * inputWidth;
+    size_t output2DStride = outputWidth * inputHeight;
+
+    float* aDev, * bDev, * outputDev, * biasDev;
 
     size_t workspaceSize = 1024 * 1024 * 4;
     void* workspace = NULL;
@@ -96,51 +131,67 @@ int main()
     cublasLtHandle_t ltHandle;
 
     checkCublasStatus(cublasLtCreate(&ltHandle));
-    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Adev), m * k * N * sizeof(float)));
-    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Bdev), n * k * N * sizeof(float)));
-    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&Cdev), m * n * N * sizeof(float)));
-    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&biasDev), m * N * sizeof(float)));
+    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&bDev), inputWidth * inputHeight * batches * sizeof(float)));
+    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&aDev), outputWidth * inputWidth * batches * sizeof(float)));
+    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&outputDev), outputWidth * inputHeight * batches * sizeof(float)));
+    checkCudaStatus(cudaMalloc(reinterpret_cast<void**>(&biasDev), outputWidth * inputHeight * batches * sizeof(float)));
     checkCudaStatus(cudaMalloc(&workspace, workspaceSize));
 
     GpuRand rand;
-    rand.Rand(Adev, m * k * N);
-    rand.Rand(Bdev, n * k * N);
-    rand.Rand(biasDev, m * N);
+    rand.Rand(bDev, inputWidth * inputHeight * batches);
+    rand.Rand(aDev, outputWidth * inputWidth * batches);
+    rand.Rand(biasDev, outputWidth * inputHeight * batches);
 
-
+    PrintDeviceTensorf32(false, inputHeight, inputWidth, bDev, "Input", input1DStride, input2DStride, batches);
+    PrintDeviceTensorf32(false, inputWidth, outputWidth, aDev, "Weight", weight1DStride, weight2DStride, batches);
+    PrintDeviceTensorf32(false, inputHeight, outputWidth, biasDev, "Bias", output1DStride, output2DStride, batches);
 
     checkCublasStatus(cublasLtMatmulDescCreate(&operationDesc, CUBLAS_COMPUTE_32F, CUDA_R_32F));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &transa, sizeof(transa)));
-    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &transb, sizeof(transa)));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSB, &inputTrans, sizeof(inputTrans)));
+    checkCublasStatus(cublasLtMatmulDescSetAttribute(operationDesc, CUBLASLT_MATMUL_DESC_TRANSA, &weightTrans, sizeof(inputTrans)));
     
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Adesc, CUDA_R_32F, transa == CUBLAS_OP_N ? m : k, transa == CUBLAS_OP_N ? k : m, lda));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Bdesc, CUDA_R_32F, transb == CUBLAS_OP_N ? k : n, transb == CUBLAS_OP_N ? n : k, ldb));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Cdesc, CUDA_R_32F, m, n, ldc));
-    checkCublasStatus(cublasLtMatrixLayoutCreate(&Ddesc, CUDA_R_32F, m, n, ldc));
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&BDesc, CUDA_R_32F, inputTrans == CUBLAS_OP_N ? inputHeight : inputWidth, inputTrans == CUBLAS_OP_N ? inputWidth : inputHeight, input1DStride));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(BDesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batches, sizeof(batches)));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(BDesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &input2DStride, sizeof(input2DStride)));
+
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&aDesc, CUDA_R_32F, weightTrans == CUBLAS_OP_N ? inputHeight : outputWidth, weightTrans == CUBLAS_OP_N ? outputWidth : inputHeight, weight1DStride));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(aDesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batches, sizeof(batches)));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(aDesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &weight2DStride, sizeof(weight2DStride)));
+
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&biasDesc, CUDA_R_32F, inputHeight, outputWidth, output1DStride));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(biasDesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batches, sizeof(batches)));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(biasDesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &output2DStride, sizeof(output2DStride)));
+
+    checkCublasStatus(cublasLtMatrixLayoutCreate(&outputDesc, CUDA_R_32F, inputHeight, outputWidth, output1DStride));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(outputDesc, CUBLASLT_MATRIX_LAYOUT_BATCH_COUNT, &batches, sizeof(batches)));
+    checkCublasStatus(cublasLtMatrixLayoutSetAttribute(outputDesc, CUBLASLT_MATRIX_LAYOUT_STRIDED_BATCH_OFFSET, &output2DStride, sizeof(output2DStride)));
 
     checkCublasStatus(cublasLtMatmulPreferenceCreate(&preference));
     checkCublasStatus(cublasLtMatmulPreferenceSetAttribute(preference, CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES, &workspaceSize, sizeof(workspaceSize)));
 
-    checkCublasStatus(cublasLtMatmulAlgoGetHeuristic(ltHandle, operationDesc, Adesc, Bdesc, Cdesc, Ddesc, preference, 1, &heuristicResult, &returnedResults));
+    checkCublasStatus(cublasLtMatmulAlgoGetHeuristic(ltHandle, operationDesc, aDesc, BDesc, biasDesc, outputDesc, preference, 1, &heuristicResult, &returnedResults));
 
     if (returnedResults == 0) checkCublasStatus(CUBLAS_STATUS_NOT_SUPPORTED);
 
-    checkCublasStatus(cublasLtMatmul(ltHandle,
+    checkCublasStatus(cublasLtMatmul(
+        ltHandle,
         operationDesc,
         &alpha,
-        Adev,
-        Adesc,
-        Bdev,
-        Bdesc,
+        aDev,
+        aDesc,
+        bDev,
+        BDesc,
         &beta,
         biasDev,
-        Cdesc,
-        Cdev,
-        Ddesc,
+        biasDesc,
+        outputDev,
+        outputDesc,
         &heuristicResult.algo,
         workspace,
         workspaceSize,
         0));
+
+    PrintDeviceTensorf32(false, outputWidth, inputHeight, outputDev, "Output", inputHeight, outputWidth * inputHeight, batches);
 
     return 0;
 }
